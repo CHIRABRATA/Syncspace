@@ -3,7 +3,7 @@ import { Bot, FileText, Sparkles } from 'lucide-react';
 
 const SYNCBOT_REGEX = /^@SyncBot\s+(.+)$/im;
 
-export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled, document }) {
+export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled, document, onOpenAiPrompt }) {
   const textareaRef = useRef(null);
   const selectionRef = useRef({ start: 0, end: 0 });
 
@@ -179,7 +179,7 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
             style={{ background: 'rgba(155,114,247,0.08)', color: 'var(--accent-purple)', border: '1px solid rgba(155,114,247,0.2)' }}
           >
             <Bot size={12} />
-            <span>Tip: Type <strong>@SyncBot [prompt]</strong> and press Enter to invoke AI</span>
+            <span>Tip: Click <strong>AI Writer</strong> or type <strong>@SyncBot</strong> to write automatically</span>
           </div>
         </div>
       </main>
@@ -188,7 +188,7 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
 
   return (
     <main
-      className="flex-1 overflow-auto p-8 md:p-12"
+      className="flex-1 overflow-auto p-8 md:p-12 relative"
       style={{ background: 'var(--bg-primary)' }}
     >
       <div
@@ -197,20 +197,16 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
       >
         {/* @SyncBot hint badge */}
         <div
-          className="absolute top-4 right-4 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs opacity-60 hover:opacity-100 transition-opacity cursor-pointer select-none"
-          style={{ background: 'rgba(155,114,247,0.12)', color: '#9b72f7', border: '1px solid rgba(155,114,247,0.2)' }}
+          className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium opacity-80 hover:opacity-100 transition-all cursor-pointer select-none"
+          style={{ background: 'rgba(155,114,247,0.12)', color: '#9b72f7', border: '1px solid rgba(155,114,247,0.3)' }}
           onClick={() => {
             const ta = textareaRef.current;
-            if (ta) {
-              const pos = ta.selectionStart;
-              const promptText = '\n@SyncBot ';
-              [...promptText].forEach((c, idx) => onInsert(c, pos + idx));
-              ta.focus();
-            }
+            onOpenAiPrompt?.({ cursorIndex: ta ? ta.selectionStart : null });
           }}
+          title="Open AI Writer"
         >
-          <Sparkles size={11} />
-          <span>@SyncBot</span>
+          <Sparkles size={12} />
+          <span>Ask SyncBot</span>
         </div>
 
         <textarea
@@ -231,11 +227,29 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
             caretColor: '#4f8ef7',
             cursor: disabled ? 'not-allowed' : 'text',
           }}
-          placeholder="Start typing here...&#10;&#10;Tip: Type @SyncBot followed by a prompt and press Enter to summon the AI collaborator."
+          placeholder="Start typing here...&#10;&#10;Tip: Click the 'AI Writer' button in the toolbar to automatically generate text inside this document!"
           spellCheck
         />
+
+        {/* Floating AI Prompt Button at bottom right of document paper */}
+        <button
+          onClick={() => {
+            const ta = textareaRef.current;
+            onOpenAiPrompt?.({ cursorIndex: ta ? ta.selectionStart : null });
+          }}
+          className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold text-white shadow-xl transition-all hover:scale-105 cursor-pointer"
+          style={{
+            background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
+            boxShadow: '0 4px 15px rgba(155, 114, 247, 0.4)',
+          }}
+          title="Ask AI to write into this document"
+        >
+          <Sparkles size={13} />
+          <span>Ask AI to Write</span>
+        </button>
       </div>
     </main>
   );
 }
+
 

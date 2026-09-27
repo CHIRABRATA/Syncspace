@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Editor from './components/Editor';
 import AiPanel from './components/AiPanel';
+import AiPromptModal from './components/AiPromptModal';
 import './index.css';
 
 export default function App() {
@@ -19,8 +20,11 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [showAiPromptModal, setShowAiPromptModal] = useState(false);
+  const [aiPromptCursor, setAiPromptCursor] = useState(null);
   const [collaborators, setCollaborators] = useState([]);
   const [syncBotActive, setSyncBotActive] = useState(false);
+
 
   const {
     nodes,
@@ -195,14 +199,45 @@ export default function App() {
     send(op);
   }, [nodes, applyOp, send]);
 
-  // AI Prompt trigger
-  const handleAiPrompt = useCallback((prompt) => {
-    const sent = send({ type: 'AI_PROMPT', prompt });
+  // Dedicated AI Prompt trigger (supports prompt text and target insertion mode/position)
+  const handleAiPrompt = useCallback((prompt, insertModeOrPos = 'end') => {
+    const visibleNodes = nodes.filter((n) => !n.deleted);
+    let basePos = 100;
+    if (typeof insertModeOrPos === 'number') {
+      if (insertModeOrPos < visibleNodes.length && insertModeOrPos >= 0) {
+        basePos = visibleNodes[insertModeOrPos]?.position || 100;
+      } else if (visibleNodes.length > 0) {
+        basePos = visibleNodes[visibleNodes.length - 1].position;
+      }
+    } else if (insertModeOrPos === 'cursor' && aiPromptCursor != null) {
+      if (aiPromptCursor < visibleNodes.length && aiPromptCursor >= 0) {
+        basePos = visibleNodes[aiPromptCursor]?.position || 100;
+      } else if (visibleNodes.length > 0) {
+        basePos = visibleNodes[visibleNodes.length - 1].position;
+      }
+    } else {
+      if (visibleNodes.length > 0) {
+        basePos = visibleNodes[visibleNodes.length - 1].position;
+      }
+    }
+
+    const sent = send({
+      type: 'AI_PROMPT',
+      prompt,
+      insertAtPosition: basePos,
+    });
     if (sent) {
       setShowAiPanel(true);
       setSyncBotActive(true);
     }
-  }, [send]);
+  }, [nodes, send, aiPromptCursor]);
+
+  const handleOpenAiPrompt = useCallback((opts) => {
+    if (opts?.cursorIndex != null) {
+      setAiPromptCursor(opts.cursorIndex);
+    }
+    setShowAiPromptModal(true);
+  }, []);
 
   if (!auth) {
     return <AuthModal onAuth={handleAuth} />;
@@ -227,6 +262,7 @@ export default function App() {
           status={status}
           collaborators={collaborators}
           syncBotActive={syncBotActive}
+          onOpenAiPrompt={handleOpenAiPrompt}
         />
 
         <div className="flex flex-1 min-h-0">
@@ -235,6 +271,7 @@ export default function App() {
             onInsert={handleInsert}
             onDelete={handleDelete}
             onAiPrompt={handleAiPrompt}
+            onOpenAiPrompt={handleOpenAiPrompt}
             disabled={status !== 'connected' || !selectedDoc}
             document={selectedDoc}
           />
@@ -248,6 +285,14 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Dedicated AI Agent Writer Prompt Modal */}
+      <AiPromptModal
+        isOpen={showAiPromptModal}
+        onClose={() => setShowAiPromptModal(false)}
+        onSubmit={handleAiPrompt}
+        isWriting={syncBotActive}
+      />
     </div>
   );
 }

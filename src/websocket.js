@@ -74,9 +74,15 @@ function initWebSocketServer(server) {
           client.send(message);
         }
       }
+
+      // Persist AI-generated edits automatically
+      if (parsedEvent.senderId === 'syncbot-agent-id') {
+        scheduleDocumentSave(documentId, room.crdt.toString()).catch(() => {});
+      }
     } catch (err) {
       console.error('Redis pmessage processing error:', err.message);
     }
+
   });
 
   server.on('upgrade', (request, socket, head) => {
@@ -205,13 +211,19 @@ function initWebSocketServer(server) {
           scheduleDocumentSave(documentId, room.crdt.toString()).catch(() => {});
         } else if (op.type === 'AI_PROMPT') {
           console.log(`[AI Triggered] Prompt: "${op.prompt}" in Room: ${documentId}`);
+          let insertPos = op.insertAtPosition;
+          if (insertPos == null && room.crdt.nodes.length > 0) {
+            const activeNodes = room.crdt.nodes.filter((n) => !n.deleted);
+            insertPos = activeNodes.length > 0 ? activeNodes[activeNodes.length - 1].position + 10 : 100;
+          }
           triggerAiAgent(
             documentId,
             op.prompt,
             room.crdt.toString(),
-            op.insertAtPosition || 100.0
+            insertPos || 100.0
           );
         } else {
+
           ws.send(JSON.stringify({ error: 'Unknown operation type' }));
         }
       } catch (err) {

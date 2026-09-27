@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Wifi, WifiOff, Loader2, Bot, Users, Share2, Copy, Check, Mail, X } from 'lucide-react';
+import { Wifi, WifiOff, Loader2, Bot, Users, Share2, Copy, Check, Mail, X, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
+
 
 function StatusBadge({ status }) {
   const configs = {
@@ -26,12 +27,14 @@ function CollaboratorAvatar({ email, isSyncBot = false, index = 0 }) {
   const colors = ['#4f8ef7', '#9b72f7', '#22d3ee', '#f87171', '#fbbf24', '#22c55e'];
   const color = isSyncBot ? '#9b72f7' : colors[index % colors.length];
 
+  const emailStr = typeof email === 'string' ? email : (email?.email || '');
   const initials = isSyncBot
     ? '🤖'
-    : (email?.slice(0, 2).toUpperCase() || 'U');
+    : (emailStr.length >= 2 ? emailStr.slice(0, 2).toUpperCase() : (emailStr[0]?.toUpperCase() || 'U'));
 
   return (
-    <div className="relative group" title={isSyncBot ? 'SyncBot AI' : email}>
+    <div className="relative group" title={isSyncBot ? 'SyncBot AI' : emailStr}>
+
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-transform hover:scale-110"
         style={{
@@ -55,7 +58,7 @@ function CollaboratorAvatar({ email, isSyncBot = false, index = 0 }) {
   );
 }
 
-export default function Navbar({ document, status, collaborators = [], syncBotActive = false }) {
+export default function Navbar({ document, status, collaborators = [], syncBotActive = false, onOpenAiPrompt }) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -98,7 +101,7 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
   return (
     <>
       <header
-        className="flex items-center gap-4 px-5 py-3 border-b flex-shrink-0"
+        className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0"
         style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
       >
         {/* Document Title */}
@@ -117,6 +120,22 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
           )}
         </div>
 
+        {/* Dedicated AI Agent Writer Button */}
+        {document && (
+          <button
+            onClick={onOpenAiPrompt}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all shadow-sm hover:opacity-95 hover:scale-[1.02] cursor-pointer"
+            style={{
+              background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
+              boxShadow: '0 2px 10px rgba(155, 114, 247, 0.35)',
+            }}
+            title="Ask AI to write into this document"
+          >
+            <Sparkles size={13} className={syncBotActive ? 'animate-spin' : ''} />
+            <span>AI Writer</span>
+          </button>
+        )}
+
         {/* Share Button (Active when document is selected) */}
         {document && (
           <button
@@ -132,6 +151,7 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
             <span>Share</span>
           </button>
         )}
+
 
         {/* Collaborator Avatars */}
         {collaborators.length > 0 && (

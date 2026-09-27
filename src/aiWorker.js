@@ -43,9 +43,25 @@ Provide only the text response to be inserted into the document. Be concise and 
       let currentPos = basePosition + 0.1;
       let charIndex = 0;
 
+      // Prepend paragraph break if writing into non-empty document
+      if (currentContent && currentContent.trim().length > 0 && !currentContent.endsWith('\n')) {
+        for (const nl of ['\n', '\n']) {
+          const nlOp = {
+            type: 'INSERT_OP',
+            id: `syncbot_nl_${Date.now()}_${charIndex++}`,
+            char: nl,
+            position: currentPos,
+            senderId: 'syncbot-agent-id',
+          };
+          await pubClient.publish(`doc_room:${documentId}`, JSON.stringify(nlOp));
+          currentPos += 0.05;
+        }
+      }
+
       // 2. Process Incoming Token Chunks from Groq
       for await (const chunk of stream) {
         const textChunk = chunk.choices[0]?.delta?.content || '';
+
 
         // 3. Convert every streamed character into a CRDT INSERT operation
         for (const char of textChunk) {

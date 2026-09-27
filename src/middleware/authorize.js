@@ -73,4 +73,36 @@ function authorizeDocumentAccess(requiredRole = 'READ') {
   };
 }
 
-module.exports = { authorizeDocumentAccess };
+/**
+ * Owner-only middleware. Rejects any user who is not the document owner.
+ * Use this to protect DELETE, sharing, and permission management routes.
+ */
+function requireDocumentOwner() {
+  return async (req, res, next) => {
+    const documentId = req.params.id;
+    const userId = req.user.id;
+
+    try {
+      const docResult = await db.query(
+        'SELECT owner_id FROM documents WHERE id = $1',
+        [documentId]
+      );
+
+      if (docResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      if (docResult.rows[0].owner_id !== userId) {
+        return res.status(403).json({ error: 'Only the document owner can perform this action' });
+      }
+
+      req.docRole = 'OWNER';
+      next();
+    } catch (err) {
+      console.error('Owner authorization error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+}
+
+module.exports = { authorizeDocumentAccess, requireDocumentOwner };
