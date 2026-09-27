@@ -34,7 +34,7 @@ Provide only the text response to be inserted into the document. Be concise and 
             content: prompt,
           },
         ],
-        model: 'llama-3.3-70b-versatile', // Fast Llama 3.3 model on Groq
+        model: process.env.GROQ_MODEL || 'openai/gpt-oss-20b',
         stream: true,
       });
 
