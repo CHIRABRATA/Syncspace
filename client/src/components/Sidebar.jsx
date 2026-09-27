@@ -35,10 +35,10 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
     let docId = joinInput.trim();
     if (!docId) return;
 
-    // Support pasted full URLs like http://localhost:5173/?doc=UUID
-    if (docId.includes('doc=')) {
-      const match = docId.match(/doc=([a-f0-9-]+)/i);
-      if (match) docId = match[1];
+    // Support pasted full URLs, query params, or raw UUIDs
+    const uuidMatch = docId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuidMatch) {
+      docId = uuidMatch[0];
     }
 
     setJoining(true);
@@ -54,6 +54,7 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
       setJoining(false);
     }
   };
+
 
   const filtered = documents.filter((d) =>
     d.title?.toLowerCase().includes(search.toLowerCase())

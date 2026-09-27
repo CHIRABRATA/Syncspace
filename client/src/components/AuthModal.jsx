@@ -16,10 +16,12 @@ export default function AuthModal({ onAuth }) {
     try {
       const fn = mode === 'login' ? api.login : api.register;
       const data = await fn(email, password);
-      // Backend returns { token, user } or sets httpOnly cookie
+      // Backend returns { token, user }
       const token = data.token || data.accessToken;
       if (token) localStorage.setItem('syncspace_token', token);
+      if (data.user) localStorage.setItem('syncspace_user', JSON.stringify(data.user));
       onAuth({ token, user: data.user });
+
     } catch (err) {
       setError(err.message);
     } finally {

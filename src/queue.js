@@ -1,5 +1,7 @@
+require('dotenv').config();
 const { Queue, Worker } = require('bullmq');
 const db = require('./db');
+
 
 // Redis connection options for BullMQ
 const connection = process.env.REDIS_URL

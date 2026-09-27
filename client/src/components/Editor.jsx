@@ -1,86 +1,160 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { Bot, FileText } from 'lucide-react';
+import { Bot, FileText, Sparkles } from 'lucide-react';
 
 const SYNCBOT_REGEX = /^@SyncBot\s+(.+)$/im;
 
 export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled, document }) {
   const textareaRef = useRef(null);
-  // Track previous text to compute diffs
-  const prevTextRef = useRef(text);
-  // Track node positions for accurate CRDT ops
-  const nodesRef = useRef([]);
+  const selectionRef = useRef({ start: 0, end: 0 });
 
-  // Keep prevText in sync when text changes from outside (remote ops)
+  const handleSelect = useCallback(() => {
+    if (textareaRef.current) {
+      selectionRef.current = {
+        start: textareaRef.current.selectionStart,
+        end: textareaRef.current.selectionEnd,
+      };
+    }
+  }, []);
+
+  // Preserve cursor position across external/remote updates
   useEffect(() => {
-    prevTextRef.current = text;
+    const ta = textareaRef.current;
+    if (ta && window.document.activeElement === ta) {
+      const { start, end } = selectionRef.current;
+      const safeStart = Math.min(start, text.length);
+      const safeEnd = Math.min(end, text.length);
+      ta.setSelectionRange(safeStart, safeEnd);
+    }
   }, [text]);
 
   const handleKeyDown = useCallback((e) => {
     if (disabled) return;
-
     const ta = textareaRef.current;
+    if (!ta) return;
+
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
 
-    if (e.key === 'Backspace') {
-      if (start === end && start > 0) {
-        // Single char delete
-        e.preventDefault();
-        onDelete(start - 1);
-      } else if (start !== end) {
-        // Range delete - delete from end to start
-        e.preventDefault();
+    // Handle Enter key (including @SyncBot invocation and newlines)
+    if (e.key === 'Enter') {
+      e.preventDefault();
+
+      // Check if current line contains @SyncBot prompt
+      const val = ta.value;
+      const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+      const lineEnd = val.indexOf('\n', start);
+      const currentLine = val.substring(lineStart, lineEnd === -1 ? val.length : lineEnd);
+      const match = currentLine.match(SYNCBOT_REGEX);
+      if (match) {
+        onAiPrompt(match[1].trim());
+      }
+
+      if (start !== end) {
         for (let i = end - 1; i >= start; i--) {
           onDelete(i);
         }
       }
+      onInsert('\n', start);
+      const nextPos = start + 1;
+      selectionRef.current = { start: nextPos, end: nextPos };
+      requestAnimationFrame(() => {
+        if (ta) ta.setSelectionRange(nextPos, nextPos);
+      });
+      return;
     }
-  }, [disabled, onDelete]);
 
-  const handleKeyPress = useCallback((e) => {
-    if (disabled || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key.length !== 1) return; // Ignore control keys
-
-    e.preventDefault();
-    const ta = textareaRef.current;
-    const pos = ta.selectionStart;
-
-    onInsert(e.key, pos);
-
-    // Move caret forward
-    requestAnimationFrame(() => {
-      if (ta) {
-        ta.selectionStart = pos + 1;
-        ta.selectionEnd = pos + 1;
+    // Handle Backspace
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      if (start === end) {
+        if (start > 0) {
+          onDelete(start - 1);
+          const nextPos = start - 1;
+          selectionRef.current = { start: nextPos, end: nextPos };
+          requestAnimationFrame(() => {
+            if (ta) ta.setSelectionRange(nextPos, nextPos);
+          });
+        }
+      } else {
+        for (let i = end - 1; i >= start; i--) {
+          onDelete(i);
+        }
+        selectionRef.current = { start, end: start };
+        requestAnimationFrame(() => {
+          if (ta) ta.setSelectionRange(start, start);
+        });
       }
-    });
-  }, [disabled, onInsert]);
+      return;
+    }
+
+    // Handle Forward Delete
+    if (e.key === 'Delete') {
+      e.preventDefault();
+      if (start === end) {
+        if (start < ta.value.length) {
+          onDelete(start);
+          selectionRef.current = { start, end: start };
+          requestAnimationFrame(() => {
+            if (ta) ta.setSelectionRange(start, start);
+          });
+        }
+      } else {
+        for (let i = end - 1; i >= start; i--) {
+          onDelete(i);
+        }
+        selectionRef.current = { start, end: start };
+        requestAnimationFrame(() => {
+          if (ta) ta.setSelectionRange(start, start);
+        });
+      }
+      return;
+    }
+
+    // Handle regular printable characters (letters, numbers, symbols, space)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      if (start !== end) {
+        for (let i = end - 1; i >= start; i--) {
+          onDelete(i);
+        }
+      }
+      onInsert(e.key, start);
+      const nextPos = start + 1;
+      selectionRef.current = { start: nextPos, end: nextPos };
+      requestAnimationFrame(() => {
+        if (ta) ta.setSelectionRange(nextPos, nextPos);
+      });
+      return;
+    }
+  }, [disabled, onDelete, onInsert, onAiPrompt]);
 
   const handlePaste = useCallback((e) => {
     if (disabled) return;
     e.preventDefault();
-    const pasteText = e.clipboardData.getData('text');
-    const ta = textareaRef.current;
-    const pos = ta.selectionStart;
-    [...pasteText].forEach((char, i) => {
-      onInsert(char, pos + i);
-    });
-  }, [disabled, onInsert]);
+    const pasteText = e.clipboardData?.getData('text') || '';
+    if (!pasteText) return;
 
-  // Detect @SyncBot trigger on Enter
-  const handleKeyUp = useCallback((e) => {
-    if (e.key !== 'Enter') return;
     const ta = textareaRef.current;
-    const val = ta.value;
-    const lines = val.split('\n');
-    for (const line of lines) {
-      const match = line.match(SYNCBOT_REGEX);
-      if (match) {
-        onAiPrompt(match[1].trim());
-        break;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+
+    if (start !== end) {
+      for (let i = end - 1; i >= start; i--) {
+        onDelete(i);
       }
     }
-  }, [onAiPrompt]);
+
+    [...pasteText].forEach((char, i) => {
+      onInsert(char, start + i);
+    });
+
+    const nextPos = start + pasteText.length;
+    selectionRef.current = { start: nextPos, end: nextPos };
+    requestAnimationFrame(() => {
+      if (ta) ta.setSelectionRange(nextPos, nextPos);
+    });
+  }, [disabled, onDelete, onInsert]);
 
   if (!document) {
     return (
@@ -123,20 +197,29 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
       >
         {/* @SyncBot hint badge */}
         <div
-          className="absolute top-4 right-4 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs opacity-60 hover:opacity-100 transition-opacity"
+          className="absolute top-4 right-4 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs opacity-60 hover:opacity-100 transition-opacity cursor-pointer select-none"
           style={{ background: 'rgba(155,114,247,0.12)', color: '#9b72f7', border: '1px solid rgba(155,114,247,0.2)' }}
+          onClick={() => {
+            const ta = textareaRef.current;
+            if (ta) {
+              const pos = ta.selectionStart;
+              const promptText = '\n@SyncBot ';
+              [...promptText].forEach((c, idx) => onInsert(c, pos + idx));
+              ta.focus();
+            }
+          }}
         >
-          <Bot size={11} />
+          <Sparkles size={11} />
           <span>@SyncBot</span>
         </div>
 
         <textarea
           ref={textareaRef}
           value={text}
-          readOnly // We handle all input via keyDown/keyPress
+          onSelect={handleSelect}
+          onClick={handleSelect}
+          onKeyUp={handleSelect}
           onKeyDown={handleKeyDown}
-          onKeyPress={handleKeyPress}
-          onKeyUp={handleKeyUp}
           onPaste={handlePaste}
           disabled={disabled}
           className="w-full h-full resize-none outline-none bg-transparent editor-font"
@@ -155,3 +238,4 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
     </main>
   );
 }
+

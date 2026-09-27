@@ -1,5 +1,7 @@
+require('dotenv').config();
 const { Queue, Worker } = require('bullmq');
 const Groq = require('groq-sdk');
+
 const { pubClient } = require('./redis');
 
 const aiQueue = new Queue('ai-agent-queue', {

@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = 'ws://localhost:3000';
+function getWsUrl() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.hostname || 'localhost';
+  return `${protocol}//${host}:3000`;
+}
 
 export function useWebSocket({ token, documentId, onOp }) {
   const wsRef = useRef(null);
@@ -9,11 +13,23 @@ export function useWebSocket({ token, documentId, onOp }) {
   const mountedRef = useRef(true);
 
   const connect = useCallback(() => {
-    if (!token || !documentId) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (!token || !documentId) {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      setStatus('disconnected');
+      return;
+    }
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
     setStatus('connecting');
-    const url = `${WS_URL}?token=${token}&documentId=${documentId}`;
+    const wsBase = getWsUrl();
+    const url = `${wsBase}?token=${encodeURIComponent(token)}&documentId=${encodeURIComponent(documentId)}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
@@ -36,10 +52,11 @@ export function useWebSocket({ token, documentId, onOp }) {
     ws.onclose = () => {
       if (!mountedRef.current) return;
       setStatus('disconnected');
-      // Auto-reconnect after 3 seconds
+      // Auto-reconnect after 2.5 seconds if still mounted
+      clearTimeout(reconnectTimer.current);
       reconnectTimer.current = setTimeout(() => {
-        if (mountedRef.current) connect();
-      }, 3000);
+        if (mountedRef.current && token && documentId) connect();
+      }, 2500);
     };
 
     ws.onerror = () => {
@@ -49,12 +66,23 @@ export function useWebSocket({ token, documentId, onOp }) {
 
   useEffect(() => {
     mountedRef.current = true;
-    if (token && documentId) connect();
+    if (token && documentId) {
+      connect();
+    } else {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      setStatus('disconnected');
+    }
 
     return () => {
       mountedRef.current = false;
       clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, [connect, token, documentId]);
 
@@ -68,3 +96,4 @@ export function useWebSocket({ token, documentId, onOp }) {
 
   return { status, send };
 }
+

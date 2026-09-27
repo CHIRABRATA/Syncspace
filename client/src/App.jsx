@@ -19,22 +19,25 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [collaborators] = useState([]);
+  const [collaborators, setCollaborators] = useState([]);
   const [syncBotActive, setSyncBotActive] = useState(false);
 
   const {
     nodes,
     aiLog,
     applyOp,
+    resetState,
     generateId,
     generatePosition,
     getText,
-    POSITION_START,
-    POSITION_END,
   } = useDocumentState();
 
   // Handle incoming WebSocket operations
   const handleOp = useCallback((op) => {
+    if (op.type === 'PRESENCE_UPDATE') {
+      setCollaborators(op.collaborators || []);
+      return;
+    }
     if (op.type === 'INSERT_OP' && op.senderId === 'syncbot-agent-id') {
       setSyncBotActive(true);
       setShowAiPanel(true);
@@ -62,6 +65,15 @@ export default function App() {
     documentId: selectedDoc?.id,
     onOp: stableOnOp,
   });
+
+  // Verify stored token validity on initial load
+  useEffect(() => {
+    if (auth?.token) {
+      api.getMe().catch(() => {
+        handleLogout();
+      });
+    }
+  }, []);
 
   // Fetch documents on auth and handle ?doc=<id> URL parameter
   useEffect(() => {
@@ -99,12 +111,14 @@ export default function App() {
           setSelectedDoc(docList[0]);
         }
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error('Failed to fetch documents:', err);
+      });
   }, [auth]);
 
   // Auth handler
   const handleAuth = useCallback(({ token, user }) => {
-    localStorage.setItem('syncspace_token', token);
+    if (token) localStorage.setItem('syncspace_token', token);
     if (user) localStorage.setItem('syncspace_user', JSON.stringify(user));
     setAuth({ token, user });
   }, []);
@@ -117,15 +131,28 @@ export default function App() {
     setAuth(null);
     setSelectedDoc(null);
     setDocuments([]);
-  }, []);
+    setCollaborators([]);
+    resetState();
+  }, [resetState]);
+
+  // Listen for global auth expired events
+  useEffect(() => {
+    const onAuthExpired = () => handleLogout();
+    window.addEventListener('syncspace:logout', onAuthExpired);
+    return () => window.removeEventListener('syncspace:logout', onAuthExpired);
+  }, [handleLogout]);
 
   // Select document and update URL query param
   const handleSelectDoc = useCallback((doc) => {
+    if (doc?.id !== selectedDoc?.id) {
+      resetState();
+      setCollaborators([]);
+    }
     setSelectedDoc(doc);
     if (doc?.id) {
       window.history.replaceState(null, '', `?doc=${doc.id}`);
     }
-  }, []);
+  }, [selectedDoc, resetState]);
 
   // New or joined document created
   const handleDocCreated = useCallback((doc) => {
@@ -136,6 +163,7 @@ export default function App() {
     handleSelectDoc(doc);
   }, [handleSelectDoc]);
 
+
   // Compute visible text
   const text = getText();
 
@@ -144,10 +172,7 @@ export default function App() {
     const visibleNodes = nodes.filter((n) => !n.deleted);
     const before = visibleNodes[textPos - 1];
     const after = visibleNodes[textPos];
-    const position = generatePosition(
-      before?.position ?? POSITION_START,
-      after?.position ?? POSITION_END
-    );
+    const position = generatePosition(before?.position, after?.position);
     const id = generateId(auth?.user?.id || 'local');
     const op = {
       type: 'INSERT_OP',
@@ -157,7 +182,8 @@ export default function App() {
     };
     applyOp(op);
     send(op);
-  }, [nodes, generatePosition, generateId, auth, applyOp, send, POSITION_START, POSITION_END]);
+  }, [nodes, generatePosition, generateId, auth, applyOp, send]);
+
 
   // Delete character at text position
   const handleDelete = useCallback((textPos) => {
