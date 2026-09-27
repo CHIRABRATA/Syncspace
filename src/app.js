@@ -15,11 +15,23 @@ const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
 
-// Enable CORS for Vercel frontend and other origins
-app.use(cors({
-  origin: true,
+// Enable CORS for Vercel frontend, local development, and preview deployments
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests (curl, mobile) or any vercel.app / localhost origin
+    if (!origin || origin.includes('vercel.app') || origin.includes('localhost')) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Security Headers
 app.use(helmet({
