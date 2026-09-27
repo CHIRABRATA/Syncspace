@@ -39,6 +39,14 @@ app.get('/health', (req, res) => {
 // Initialize WebSocket Server
 initWebSocketServer(server);
 
+// Global error handler middleware
+app.use((err, req, res, next) => {
+  console.error('[SyncSpace Error]', err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error',
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`SyncSpace Server running on http://localhost:${PORT}`);

@@ -18,8 +18,8 @@ router.get('/', async (req, res) => {
       SELECT DISTINCT ON (d.id)
         d.id, d.title, d.content, d.owner_id, d.created_at, d.updated_at,
         CASE
-          WHEN d.owner_id = $1 THEN 'OWNER'
-          ELSE COALESCE(dp.role, 'READ')
+          WHEN d.owner_id = $1 THEN 'OWNER'::TEXT
+          ELSE COALESCE(dp.role::TEXT, 'READ'::TEXT)
         END AS role
       FROM documents d
       LEFT JOIN document_permissions dp ON d.id = dp.document_id AND dp.user_id = $1
@@ -54,8 +54,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// POST /api/documents/join - Join an existing document by ID
-// Does NOT auto-grant WRITE anymore; only adds READ if user has no existing permission
+// POST /api/documents/join - Join an existing document by ID or Share Link/UUID with /w or /r path
 router.post('/join', async (req, res) => {
   const { documentId } = req.body;
   const userId = req.user.id;
@@ -64,8 +63,41 @@ router.post('/join', async (req, res) => {
     return res.status(400).json({ error: 'Document ID is required' });
   }
 
+  const rawDocId = typeof documentId === 'string' ? documentId.trim() : '';
+  let requestedRole = typeof req.body.role === 'string' ? req.body.role.trim().toUpperCase() : null;
+
+  // Extract UUID and optional trailing /w or /r permission indicator
+  const match = rawDocId.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:[\/:]([rwRW]))?/i);
+
+  let cleanDocId = rawDocId;
+  if (match) {
+    cleanDocId = match[1];
+    if (match[2]) {
+      requestedRole = match[2].toUpperCase() === 'W' ? 'WRITE' : 'READ';
+    }
+  } else {
+    cleanDocId = rawDocId.split(/[\/:]/)[0];
+    if (rawDocId.toLowerCase().endsWith('/w') || rawDocId.toLowerCase().endsWith(':w')) {
+      requestedRole = 'WRITE';
+    } else if (rawDocId.toLowerCase().endsWith('/r') || rawDocId.toLowerCase().endsWith(':r')) {
+      requestedRole = 'READ';
+    }
+  }
+
+  // Normalize role: if 'W' or 'WRITE' -> 'WRITE', otherwise default to 'READ'
+  if (requestedRole === 'W' || requestedRole === 'WRITE') {
+    requestedRole = 'WRITE';
+  } else {
+    requestedRole = 'READ';
+  }
+
+  const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  if (!UUID_REGEX.test(cleanDocId)) {
+    return res.status(400).json({ error: 'Invalid document ID format. Please check the document link or UUID.' });
+  }
+
   try {
-    const docResult = await db.query('SELECT * FROM documents WHERE id = $1', [documentId]);
+    const docResult = await db.query('SELECT * FROM documents WHERE id = $1', [cleanDocId]);
     if (docResult.rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
@@ -73,26 +105,41 @@ router.post('/join', async (req, res) => {
     const doc = docResult.rows[0];
     let role = 'OWNER';
 
-    // If caller is not owner, give them READ permission so it shows in their documents
+    // If caller is not owner, assign requested role
     if (doc.owner_id !== userId) {
-      await db.query(
-        `INSERT INTO document_permissions (document_id, user_id, role)
-         VALUES ($1, $2, 'READ')
-         ON CONFLICT (document_id, user_id) DO NOTHING`,
-        [documentId, userId]
-      );
-      // Fetch actual role (may already have WRITE from owner sharing)
-      const permResult = await db.query(
-        'SELECT role FROM document_permissions WHERE document_id = $1 AND user_id = $2',
-        [documentId, userId]
-      );
-      role = permResult.rows[0]?.role || 'READ';
+      if (requestedRole === 'WRITE') {
+        // Upgrade / grant WRITE access
+        await db.query(
+          `INSERT INTO document_permissions (document_id, user_id, role)
+           VALUES ($1, $2, 'WRITE')
+           ON CONFLICT (document_id, user_id) 
+           DO UPDATE SET role = 'WRITE', updated_at = CURRENT_TIMESTAMP`,
+          [cleanDocId, userId]
+        );
+        role = 'WRITE';
+      } else {
+        // If READ requested, insert READ only if no permission exists (keep existing WRITE)
+        await db.query(
+          `INSERT INTO document_permissions (document_id, user_id, role)
+           VALUES ($1, $2, 'READ')
+           ON CONFLICT (document_id, user_id) DO NOTHING`,
+          [cleanDocId, userId]
+        );
+        const permResult = await db.query(
+          'SELECT role FROM document_permissions WHERE document_id = $1 AND user_id = $2',
+          [cleanDocId, userId]
+        );
+        role = permResult.rows[0]?.role || 'READ';
+      }
     }
 
     return res.json({ ...doc, role });
   } catch (err) {
     console.error('Error joining document:', err);
-    return res.status(500).json({ error: 'Failed to join document' });
+    if (err.code === '22P02') {
+      return res.status(400).json({ error: 'Invalid document ID format' });
+    }
+    return res.status(500).json({ error: err.message || 'Failed to join document' });
   }
 });
 

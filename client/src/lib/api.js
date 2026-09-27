@@ -22,7 +22,15 @@ async function request(path, options = {}) {
     return {};
   }
 
-  const data = await res.json().catch(() => ({}));
+  let data = {};
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    data = await res.json().catch(() => ({}));
+  } else {
+    const rawText = await res.text().catch(() => '');
+    data = { error: rawText || `Request failed with status ${res.status}` };
+  }
+
   if (!res.ok) {
     // If token is invalid or expired, clear local storage and signal auth change
     if (res.status === 401 && path !== '/auth/login' && path !== '/auth/register') {
@@ -30,7 +38,9 @@ async function request(path, options = {}) {
       localStorage.removeItem('syncspace_user');
       window.dispatchEvent(new CustomEvent('syncspace:logout'));
     }
-    throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
+    const errorMsg = data.error || data.message || `Request failed with status ${res.status}`;
+    console.error(`[API Error ${res.status}] ${path}:`, errorMsg);
+    throw new Error(errorMsg);
   }
   return data;
 }
@@ -65,11 +75,18 @@ export const api = {
       body: JSON.stringify(updates),
     }),
 
-  joinDocument: (documentId) =>
-    request('/documents/join', {
+  joinDocument: (documentIdOrObj, role) => {
+    let documentId = documentIdOrObj;
+    let targetRole = role;
+    if (typeof documentIdOrObj === 'object' && documentIdOrObj !== null) {
+      documentId = documentIdOrObj.documentId || documentIdOrObj.id;
+      targetRole = documentIdOrObj.role || targetRole;
+    }
+    return request('/documents/join', {
       method: 'POST',
-      body: JSON.stringify({ documentId }),
-    }),
+      body: JSON.stringify({ documentId, role: targetRole }),
+    });
+  },
 
   // ---- Permission management (OWNER-only) ----
 

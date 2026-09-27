@@ -28,8 +28,14 @@ const db = require('../db');
  */
 function authorizeDocumentAccess(requiredRole = 'READ') {
   return async (req, res, next) => {
-    const documentId = req.params.id;
+    const rawId = req.params.id;
+    const documentId = rawId ? rawId.split(/[\/:]/)[0] : rawId;
     const userId = req.user.id;
+
+    const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    if (!documentId || !UUID_REGEX.test(documentId)) {
+      return res.status(400).json({ error: 'Invalid document ID format' });
+    }
 
     try {
       // 1. Check if user is document owner and also if the document exists or not 
@@ -79,8 +85,14 @@ function authorizeDocumentAccess(requiredRole = 'READ') {
  */
 function requireDocumentOwner() {
   return async (req, res, next) => {
-    const documentId = req.params.id;
+    const rawId = req.params.id;
+    const documentId = rawId ? rawId.split(/[\/:]/)[0] : rawId;
     const userId = req.user.id;
+
+    const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    if (!documentId || !UUID_REGEX.test(documentId)) {
+      return res.status(400).json({ error: 'Invalid document ID format' });
+    }
 
     try {
       const docResult = await db.query(

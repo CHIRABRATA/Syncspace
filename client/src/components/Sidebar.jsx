@@ -37,13 +37,14 @@ export default function Sidebar({
 
   const handleJoin = async (e) => {
     e.preventDefault();
-    let docId = joinInput.trim();
-    if (!docId) return;
+    let input = joinInput.trim();
+    if (!input) return;
 
-    // Support pasted full URLs, query params, or raw UUIDs
-    const uuidMatch = docId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-    if (uuidMatch) {
-      docId = uuidMatch[0];
+    // Support pasted full URLs (e.g. http://localhost:5173/?doc=uuid/w), query params, or raw UUIDs with /w or /r
+    const match = input.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:[\/:]([rwRW]))?/i);
+    let docId = input;
+    if (match) {
+      docId = match[2] ? `${match[1]}/${match[2].toLowerCase()}` : match[1];
     }
 
     setJoining(true);

@@ -106,36 +106,43 @@ export default function App() {
     }
   }, []);
 
-  // Fetch documents on auth and handle ?doc=<id> URL parameter
+  // Fetch documents on auth and handle ?doc=<id>[/w|/r] URL parameter
   useEffect(() => {
     if (!auth) return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    const targetDocId = urlParams.get('doc');
+    const targetDocParam = urlParams.get('doc');
 
     api.getDocuments()
       .then(async (data) => {
         let docList = Array.isArray(data) ? data : data.documents || [];
 
-        if (targetDocId) {
-          let match = docList.find((d) => d.id === targetDocId);
-          if (!match) {
-            try {
-              const joinedDoc = await api.joinDocument(targetDocId);
-              if (joinedDoc) {
+        if (targetDocParam) {
+          const cleanDocId = targetDocParam.split(/[\/:]/)[0];
+          try {
+            // Join document with provided path/role (e.g. /w for write or /r for read)
+            const joinedDoc = await api.joinDocument(targetDocParam);
+            if (joinedDoc) {
+              const existingIdx = docList.findIndex((d) => d.id === joinedDoc.id);
+              if (existingIdx >= 0) {
+                docList[existingIdx] = joinedDoc;
+              } else {
                 docList = [joinedDoc, ...docList];
-                match = joinedDoc;
               }
-            } catch (err) {
-              console.error('[SyncSpace] Could not auto-join URL doc:', err);
+              setDocuments(docList);
+              setSelectedDoc(joinedDoc);
+              if (joinedDoc.role) setDocRole(joinedDoc.role);
+              return;
             }
-          }
-          setDocuments(docList);
-          if (match) {
-            setSelectedDoc(match);
-            // Set initial role from doc data
-            if (match.role) setDocRole(match.role);
-            return;
+          } catch (err) {
+            console.error('[SyncSpace] Could not join URL doc:', err);
+            const match = docList.find((d) => d.id === cleanDocId);
+            setDocuments(docList);
+            if (match) {
+              setSelectedDoc(match);
+              if (match.role) setDocRole(match.role);
+              return;
+            }
           }
         }
 
@@ -193,7 +200,12 @@ export default function App() {
   // New or joined document created
   const handleDocCreated = useCallback((doc) => {
     setDocuments((prev) => {
-      if (prev.some((d) => d.id === doc.id)) return prev;
+      const idx = prev.findIndex((d) => d.id === doc.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = doc;
+        return next;
+      }
       return [doc, ...prev];
     });
     handleSelectDoc(doc);

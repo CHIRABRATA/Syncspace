@@ -6,6 +6,7 @@ import {
 import { api } from '../lib/api';
 
 export default function ShareModal({ document, currentUserId, onClose }) {
+  const [linkRole, setLinkRole] = useState('r'); // 'r' for Read, 'w' for Write
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -17,7 +18,8 @@ export default function ShareModal({ document, currentUserId, onClose }) {
   const [loadingPerms, setLoadingPerms] = useState(true);
   const [roleDropdown, setRoleDropdown] = useState(null); // userId of open dropdown
 
-  const shareUrl = document ? `${window.location.origin}/?doc=${document.id}` : '';
+  const shareUrl = document ? `${window.location.origin}/?doc=${document.id}/${linkRole}` : '';
+  const shareUuid = document ? `${document.id}/${linkRole}` : '';
 
   // Fetch permissions on mount
   useEffect(() => {
@@ -42,8 +44,8 @@ export default function ShareModal({ document, currentUserId, onClose }) {
   };
 
   const handleCopyId = () => {
-    if (!document?.id) return;
-    navigator.clipboard.writeText(document.id);
+    if (!shareUuid) return;
+    navigator.clipboard.writeText(shareUuid);
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2000);
   };
@@ -137,16 +139,61 @@ export default function ShareModal({ document, currentUserId, onClose }) {
           </h3>
         </div>
 
+        {/* Link / UUID Access Role Toggle */}
+        <div
+          className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl"
+          style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+              Direct Share Permission:
+            </span>
+          </div>
+          <div className="flex rounded-lg p-0.5" style={{ background: 'var(--bg-secondary)' }}>
+            <button
+              type="button"
+              onClick={() => setLinkRole('r')}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all"
+              style={{
+                background: linkRole === 'r' ? 'rgba(34,197,94,0.2)' : 'transparent',
+                color: linkRole === 'r' ? 'var(--accent-green)' : 'var(--text-muted)',
+                fontWeight: linkRole === 'r' ? 600 : 400,
+              }}
+            >
+              <Eye size={12} />
+              <span>Read (/r)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLinkRole('w')}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all"
+              style={{
+                background: linkRole === 'w' ? 'rgba(79,142,247,0.2)' : 'transparent',
+                color: linkRole === 'w' ? 'var(--accent-blue)' : 'var(--text-muted)',
+                fontWeight: linkRole === 'w' ? 600 : 400,
+              }}
+            >
+              <Pencil size={12} />
+              <span>Write (/w)</span>
+            </button>
+          </div>
+        </div>
+
         {/* Share Link */}
         <div className="mb-3">
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
-            Direct Share Link
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+              Direct Share Link
+            </label>
+            <span className="text-[11px] font-mono px-1.5 py-0.2 rounded" style={{ background: linkRole === 'w' ? 'rgba(79,142,247,0.15)' : 'rgba(34,197,94,0.15)', color: linkRole === 'w' ? '#4f8ef7' : '#22c55e' }}>
+              {linkRole === 'w' ? '✏️ write mode (/w)' : '👁 read mode (/r)'}
+            </span>
+          </div>
           <div className="flex gap-2">
             <input
               readOnly
               value={shareUrl}
-              className="input-field py-2 flex-1 text-xs truncate select-all"
+              className="input-field py-2 flex-1 text-xs truncate select-all font-mono"
             />
             <button
               onClick={handleCopyLink}
@@ -162,15 +209,20 @@ export default function ShareModal({ document, currentUserId, onClose }) {
           </div>
         </div>
 
-        {/* Document ID */}
+        {/* Document UUID */}
         <div className="mb-4">
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
-            Document UUID
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+              Document UUID
+            </label>
+            <span className="text-[11px] font-mono px-1.5 py-0.2 rounded" style={{ background: linkRole === 'w' ? 'rgba(79,142,247,0.15)' : 'rgba(34,197,94,0.15)', color: linkRole === 'w' ? '#4f8ef7' : '#22c55e' }}>
+              {linkRole === 'w' ? 'path: /w' : 'path: /r'}
+            </span>
+          </div>
           <div className="flex gap-2">
             <input
               readOnly
-              value={document.id}
+              value={shareUuid}
               className="input-field py-2 flex-1 font-mono text-xs select-all"
             />
             <button

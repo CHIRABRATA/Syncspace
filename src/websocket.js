@@ -129,7 +129,8 @@ function initWebSocketServer(server) {
   server.on('upgrade', async (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     const token = url.searchParams.get('token');
-    const documentId = url.searchParams.get('documentId');
+    const rawDocumentId = url.searchParams.get('documentId');
+    const documentId = rawDocumentId ? rawDocumentId.split(/[\/:]/)[0] : null;
 
     if (!token || !documentId) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
