@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useDocumentState } from './hooks/useDocumentState';
 import { api } from './lib/api';
@@ -38,24 +38,67 @@ export default function App() {
     if (op.type === 'INSERT_OP' && op.senderId === 'syncbot-agent-id') {
       setSyncBotActive(true);
       setShowAiPanel(true);
-      // Clear syncbot active after 3s of silence
+      
       clearTimeout(window._syncbotTimer);
       window._syncbotTimer = setTimeout(() => setSyncBotActive(false), 3000);
     }
     applyOp(op);
   }, [applyOp]);
 
+  // Keep a stable ref to handleOp so useWebSocket doesn't reconnect on state changes
+  const handleOpRef = useRef(handleOp);
+  useEffect(() => {
+    handleOpRef.current = handleOp;
+  }, [handleOp]);
+
+  const stableOnOp = useCallback((op) => {
+    if (handleOpRef.current) {
+      handleOpRef.current(op);
+    }
+  }, []);
+
   const { status, send } = useWebSocket({
     token: auth?.token,
     documentId: selectedDoc?.id,
-    onOp: handleOp,
+    onOp: stableOnOp,
   });
 
-  // Fetch documents on auth
+  // Fetch documents on auth and handle ?doc=<id> URL parameter
   useEffect(() => {
     if (!auth) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetDocId = urlParams.get('doc');
+
     api.getDocuments()
-      .then((data) => setDocuments(Array.isArray(data) ? data : data.documents || []))
+      .then(async (data) => {
+        let docList = Array.isArray(data) ? data : data.documents || [];
+
+        if (targetDocId) {
+          let match = docList.find((d) => d.id === targetDocId);
+          if (!match) {
+            try {
+              const joinedDoc = await api.joinDocument(targetDocId);
+              if (joinedDoc) {
+                docList = [joinedDoc, ...docList];
+                match = joinedDoc;
+              }
+            } catch (err) {
+              console.error('[SyncSpace] Could not auto-join URL doc:', err);
+            }
+          }
+          setDocuments(docList);
+          if (match) {
+            setSelectedDoc(match);
+            return;
+          }
+        }
+
+        setDocuments(docList);
+        if (docList.length > 0 && !selectedDoc) {
+          setSelectedDoc(docList[0]);
+        }
+      })
       .catch(console.error);
   }, [auth]);
 
@@ -70,16 +113,28 @@ export default function App() {
   const handleLogout = useCallback(() => {
     localStorage.removeItem('syncspace_token');
     localStorage.removeItem('syncspace_user');
+    window.history.replaceState(null, '', window.location.pathname);
     setAuth(null);
     setSelectedDoc(null);
     setDocuments([]);
   }, []);
 
-  // New document created
-  const handleDocCreated = useCallback((doc) => {
-    setDocuments((prev) => [doc, ...prev]);
+  // Select document and update URL query param
+  const handleSelectDoc = useCallback((doc) => {
     setSelectedDoc(doc);
+    if (doc?.id) {
+      window.history.replaceState(null, '', `?doc=${doc.id}`);
+    }
   }, []);
+
+  // New or joined document created
+  const handleDocCreated = useCallback((doc) => {
+    setDocuments((prev) => {
+      if (prev.some((d) => d.id === doc.id)) return prev;
+      return [doc, ...prev];
+    });
+    handleSelectDoc(doc);
+  }, [handleSelectDoc]);
 
   // Compute visible text
   const text = getText();
@@ -100,9 +155,7 @@ export default function App() {
       char,
       position,
     };
-    // Apply locally immediately
     applyOp(op);
-    // Send to server
     send(op);
   }, [nodes, generatePosition, generateId, auth, applyOp, send, POSITION_START, POSITION_END]);
 
@@ -136,7 +189,7 @@ export default function App() {
         user={auth.user}
         documents={documents}
         selectedDoc={selectedDoc}
-        onSelectDoc={setSelectedDoc}
+        onSelectDoc={handleSelectDoc}
         onLogout={handleLogout}
         onDocCreated={handleDocCreated}
       />

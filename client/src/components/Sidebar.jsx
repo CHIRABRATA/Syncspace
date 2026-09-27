@@ -1,26 +1,57 @@
 import { useState } from 'react';
 import {
   FileText, Plus, ChevronRight, LogOut, User,
-  Loader2, Sparkles, Clock, Search
+  Loader2, Sparkles, Clock, Search, Link2, AlertCircle
 } from 'lucide-react';
 import { api } from '../lib/api';
 
 export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onLogout, onDocCreated }) {
   const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [joinInput, setJoinInput] = useState('');
+  const [activeTab, setActiveTab] = useState('create'); // 'create' | 'join'
+  const [errorMessage, setErrorMessage] = useState('');
   const [search, setSearch] = useState('');
 
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
     setCreating(true);
+    setErrorMessage('');
     try {
       const doc = await api.createDocument(newTitle.trim());
       onDocCreated(doc);
       setNewTitle('');
+    } catch (err) {
+      setErrorMessage(err.message || 'Failed to create document');
+    } finally {
       setCreating(false);
-    } catch {
-      setCreating(false);
+    }
+  };
+
+  const handleJoin = async (e) => {
+    e.preventDefault();
+    let docId = joinInput.trim();
+    if (!docId) return;
+
+    // Support pasted full URLs like http://localhost:5173/?doc=UUID
+    if (docId.includes('doc=')) {
+      const match = docId.match(/doc=([a-f0-9-]+)/i);
+      if (match) docId = match[1];
+    }
+
+    setJoining(true);
+    setErrorMessage('');
+    try {
+      const doc = await api.joinDocument(docId);
+      onDocCreated(doc);
+      onSelectDoc(doc);
+      setJoinInput('');
+    } catch (err) {
+      setErrorMessage(err.message || 'Invalid or non-existent document ID');
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -52,13 +83,101 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
         <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>SyncSpace</span>
       </div>
 
+      {/* Action Tabs: New Doc vs Join */}
+      <div className="px-4 pt-3 pb-2 flex gap-1 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        <button
+          onClick={() => { setActiveTab('create'); setErrorMessage(''); }}
+          className="flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center"
+          style={{
+            background: activeTab === 'create' ? 'var(--bg-tertiary)' : 'transparent',
+            color: activeTab === 'create' ? 'var(--text-primary)' : 'var(--text-muted)',
+          }}
+        >
+          New Document
+        </button>
+        <button
+          onClick={() => { setActiveTab('join'); setErrorMessage(''); }}
+          className="flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center flex items-center justify-center gap-1"
+          style={{
+            background: activeTab === 'join' ? 'var(--bg-tertiary)' : 'transparent',
+            color: activeTab === 'join' ? 'var(--text-primary)' : 'var(--text-muted)',
+          }}
+        >
+          <Link2 size={11} />
+          Join Existing
+        </button>
+      </div>
+
+      {/* Creation / Join Form */}
+      <div className="px-4 py-2.5">
+        {activeTab === 'create' ? (
+          <form onSubmit={handleCreate} className="flex gap-2">
+            <input
+              type="text"
+              className="input-field py-2 flex-1"
+              placeholder="Document title..."
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              style={{ fontSize: '12px' }}
+            />
+            <button
+              type="submit"
+              disabled={!newTitle.trim() || creating}
+              className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all"
+              style={{
+                background: newTitle.trim() ? 'linear-gradient(135deg, #4f8ef7, #9b72f7)' : 'var(--bg-tertiary)',
+                border: '1px solid var(--border)',
+                cursor: newTitle.trim() ? 'pointer' : 'default',
+              }}
+            >
+              {creating ? (
+                <Loader2 size={14} className="animate-spin text-white" />
+              ) : (
+                <Plus size={14} style={{ color: newTitle.trim() ? 'white' : 'var(--text-muted)' }} />
+              )}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleJoin} className="flex gap-2">
+            <input
+              type="text"
+              className="input-field py-2 flex-1 font-mono text-xs"
+              placeholder="Paste Doc ID / Link"
+              value={joinInput}
+              onChange={(e) => setJoinInput(e.target.value)}
+              style={{ fontSize: '11px' }}
+            />
+            <button
+              type="submit"
+              disabled={!joinInput.trim() || joining}
+              className="flex-shrink-0 px-2.5 h-9 rounded-lg text-xs font-medium flex items-center justify-center transition-all"
+              style={{
+                background: joinInput.trim() ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
+                color: joinInput.trim() ? 'white' : 'var(--text-muted)',
+                border: '1px solid var(--border)',
+                cursor: joinInput.trim() ? 'pointer' : 'default',
+              }}
+            >
+              {joining ? <Loader2 size={13} className="animate-spin" /> : 'Join'}
+            </button>
+          </form>
+        )}
+
+        {errorMessage && (
+          <div className="flex items-center gap-1.5 mt-2 text-xs text-red-400">
+            <AlertCircle size={12} className="flex-shrink-0" />
+            <span className="truncate">{errorMessage}</span>
+          </div>
+        )}
+      </div>
+
       {/* Search */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="px-4 pb-2">
         <div className="relative">
           <Search size={13} className="absolute left-3 top-2.5" style={{ color: 'var(--text-muted)' }} />
           <input
             type="text"
-            className="input-field pl-8 py-2 text-sm"
+            className="input-field pl-8 py-1.5 text-sm"
             placeholder="Search documents..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -67,41 +186,11 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
         </div>
       </div>
 
-      {/* New Document */}
-      <div className="px-4 pb-3">
-        <form onSubmit={handleCreate} className="flex gap-2">
-          <input
-            type="text"
-            className="input-field py-2 flex-1"
-            placeholder="New document title"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            style={{ fontSize: '12px' }}
-          />
-          <button
-            type="submit"
-            disabled={!newTitle.trim() || creating}
-            className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all"
-            style={{
-              background: newTitle.trim() ? 'linear-gradient(135deg, #4f8ef7, #9b72f7)' : 'var(--bg-tertiary)',
-              border: '1px solid var(--border)',
-              cursor: newTitle.trim() ? 'pointer' : 'default',
-            }}
-          >
-            {creating ? (
-              <Loader2 size={14} className="animate-spin text-white" />
-            ) : (
-              <Plus size={14} style={{ color: newTitle.trim() ? 'white' : 'var(--text-muted)' }} />
-            )}
-          </button>
-        </form>
-      </div>
-
       {/* Divider */}
-      <div className="mx-4 mb-3 border-t" style={{ borderColor: 'var(--border-subtle)' }} />
+      <div className="mx-4 mb-2 border-t" style={{ borderColor: 'var(--border-subtle)' }} />
 
       {/* Document Label */}
-      <div className="px-4 mb-2 flex items-center gap-1.5">
+      <div className="px-4 mb-1.5 flex items-center gap-1.5">
         <FileText size={11} style={{ color: 'var(--text-muted)' }} />
         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           Documents
@@ -158,8 +247,8 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
                 </div>
                 <ChevronRight
                   size={12}
-                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ color: 'var(--text-muted)' }}
+                  className="transition-transform group-hover:translate-x-0.5"
+                  style={{ color: isSelected ? 'var(--accent-blue)' : 'var(--text-muted)' }}
                 />
               </button>
             );
@@ -167,31 +256,29 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
         )}
       </div>
 
-      {/* User Account */}
-      <div
-        className="p-4 border-t flex items-center gap-3"
-        style={{ borderColor: 'var(--border-subtle)' }}
-      >
+      {/* User Info / Logout */}
+      <div className="p-3 border-t flex items-center gap-2.5" style={{ borderColor: 'var(--border)' }}>
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)', color: 'white' }}
+          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)' }}
         >
-          {initials(user?.email || '')}
+          {initials(user?.email || 'User')}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-            {user?.email || 'User'}
+            {user?.email || 'Collaborator'}
           </p>
-          <p className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
-            <User size={9} /> Member
+          <p className="text-xs truncate" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+            Online
           </p>
         </div>
         <button
           onClick={onLogout}
-          className="p-1.5 rounded-lg transition-all hover:bg-red-500/10"
-          title="Sign out"
+          title="Sign Out"
+          className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10 hover:text-red-400"
+          style={{ color: 'var(--text-muted)' }}
         >
-          <LogOut size={14} style={{ color: 'var(--text-muted)' }} />
+          <LogOut size={15} />
         </button>
       </div>
     </aside>

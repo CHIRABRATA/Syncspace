@@ -48,6 +48,40 @@ router.post('/', async (req, res) => {
   }
 });
 
+// POST /api/documents/join - Join an existing document by ID
+router.post('/join', async (req, res) => {
+  const { documentId } = req.body;
+  const userId = req.user.id;
+
+  if (!documentId) {
+    return res.status(400).json({ error: 'Document ID is required' });
+  }
+
+  try {
+    const docResult = await db.query('SELECT * FROM documents WHERE id = $1', [documentId]);
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const doc = docResult.rows[0];
+
+    // If caller is not owner, give them WRITE permission so it shows in their documents
+    if (doc.owner_id !== userId) {
+      await db.query(
+        `INSERT INTO document_permissions (document_id, user_id, role)
+         VALUES ($1, $2, 'WRITE')
+         ON CONFLICT (document_id, user_id) DO NOTHING`,
+        [documentId, userId]
+      );
+    }
+
+    return res.json(doc);
+  } catch (err) {
+    console.error('Error joining document:', err);
+    return res.status(500).json({ error: 'Failed to join document' });
+  }
+});
+
 // GET /api/documents/:id - Get document by ID (with READ permission check)
 router.get('/:id', authorizeDocumentAccess('READ'), async (req, res) => {
   try {
@@ -108,6 +142,37 @@ router.patch('/:id', authorizeDocumentAccess('WRITE'), async (req, res) => {
   } catch (err) {
     console.error('Error updating document:', err);
     return res.status(500).json({ error: 'Failed to update document' });
+  }
+});
+
+// POST /api/documents/:id/share - Share document with another user by email
+router.post('/:id/share', authorizeDocumentAccess('WRITE'), async (req, res) => {
+  const { email, role = 'WRITE' } = req.body;
+  const documentId = req.params.id;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    const userRes = await db.query('SELECT id, email FROM users WHERE email = $1', [email.trim().toLowerCase()]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'No user registered with that email' });
+    }
+
+    const targetUser = userRes.rows[0];
+
+    await db.query(
+      `INSERT INTO document_permissions (document_id, user_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (document_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+      [documentId, targetUser.id, role]
+    );
+
+    return res.json({ message: `Successfully shared with ${email}`, user: targetUser, role });
+  } catch (err) {
+    console.error('Error sharing document:', err);
+    return res.status(500).json({ error: 'Failed to share document' });
   }
 });
 
