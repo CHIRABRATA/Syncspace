@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 function getWsUrl() {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.hostname || 'localhost';
-  return `${protocol}//${host}:3000`;
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname || 'localhost';
+    return `${protocol}//${host}:3000`;
+  }
+  return 'wss://syncspace-783u.onrender.com';
 }
 
 export function useWebSocket({ token, documentId, onOp, onRoleReceived }) {

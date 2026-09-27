@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || 
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+    ? '/api' 
+    : 'https://syncspace-783u.onrender.com/api');
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('syncspace_token');

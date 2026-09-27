@@ -10,11 +10,21 @@ const documentRoutes = require('./routes/documents');
 const { initWebSocketServer } = require('./websocket');
 const { pubClient, subClient } = require('./redis');
 
+const cors = require('cors');
+
 const app = express();
 const server = http.createServer(app);
 
+// Enable CORS for Vercel frontend and other origins
+app.use(cors({
+  origin: true,
+  credentials: true,
+}));
+
 // Security Headers
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // Rate Limiting: Max 100 requests per 15 minutes per IP
 const limiter = rateLimit({
