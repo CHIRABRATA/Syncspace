@@ -119,25 +119,37 @@ function initWebSocketServer(server) {
     pubClient.expire(`presence:${documentId}`, 60);
 
     // Handle incoming messages
-    ws.on('message', (message) => {
+    ws.on('message', (rawMessage) => {
       try {
-        const op = JSON.parse(message);
+        // Safely convert Buffer to String before parsing JSON
+        const messageString = rawMessage.toString('utf8');
+        const op = JSON.parse(messageString);
+
         op.senderId = user.id;
 
-        if (op.type === 'INSERT_OP' || op.type == 'DELETE_OP') {
-          if(os.type ==='INSERT_OP'){
-            room.crdt.insert(op.id, op.char, op.position);
-          }else if(os.type ==='DELETE_OP'){
-            room.crdt.delete(op.id);
-          }
-        } 
+        if (op.type === 'INSERT_OP') {
+          room.crdt.insert(op.id, op.char, op.position);
+          
+          // Publish to Redis
+          pubClient.publish(`doc_room:${documentId}`, JSON.stringify(op));
 
-        // PUBLISH TO REDIS: All instances (including this one via sub) receive this
-        pubClient.publish(`doc_room:${documentId}`, JSON.stringify(op));
+          // Trigger debounced BullMQ persistence
+          scheduleDocumentSave(documentId, room.crdt.toString());
+        } else if (op.type === 'DELETE_OP') {
+          room.crdt.delete(op.id);
+          
+          // Publish to Redis
+          pubClient.publish(`doc_room:${documentId}`, JSON.stringify(op));
+
+          // Trigger debounced BullMQ persistence
+          scheduleDocumentSave(documentId, room.crdt.toString());
+        } else {
+          ws.send(JSON.stringify({ error: 'Unknown operation type' }));
+        }
       } catch (err) {
-        ws.send(JSON.stringify({ error: 'Invalid payload' }));
+        console.error('WebSocket Message Parse Error:', err.message);
+        ws.send(JSON.stringify({ error: 'Invalid JSON payload' }));
       }
-      scheduleDocumentSave(documentId, room.crdt.toString());
     });
 
     ws.on('close', () => {

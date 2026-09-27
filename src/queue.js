@@ -42,11 +42,12 @@ saveWorker.on('failed', (job, err) => {
  * Prevents queue flooding by replacing pending jobs for the same document.
  */
 async function scheduleDocumentSave(documentId, content) {
+  const safeDocId = String(documentId).replace(/:/g, '_');
   await documentSaveQueue.add(
     'save-snapshot',
     { documentId, content },
     {
-      jobId: `save:${documentId}`, // Deduplicates/overwrites pending job for this doc
+      jobId: `save-${safeDocId}`, // Deduplicates/overwrites pending job for this doc
       delay: 5000, // Debounce delay: Wait 5 seconds of inactivity before writing to DB
       removeOnComplete: true,
       attempts: 3, // Retry up to 3 times on DB failure
