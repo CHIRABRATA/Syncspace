@@ -25,6 +25,7 @@
 // It does NOT yet solve CONCURRENT EDITING / CRDT / OT.
 
 const { scheduleDocumentSave } = require('./queue');
+const { triggerAiAgent } = require('./aiWorker');
 const { WebSocketServer, WebSocket } = require('ws');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./middleware/auth');
@@ -143,6 +144,15 @@ function initWebSocketServer(server) {
 
           // Trigger debounced BullMQ persistence
           scheduleDocumentSave(documentId, room.crdt.toString());
+        } else if (op.type === 'AI_PROMPT') {
+          console.log(`[AI Triggered] Prompt: "${op.prompt}" in Room: ${documentId}`);
+
+          triggerAiAgent(
+            documentId,
+            op.prompt,
+            room.crdt.toString(),
+            op.insertAtPosition || 100.0
+          );
         } else {
           ws.send(JSON.stringify({ error: 'Unknown operation type' }));
         }

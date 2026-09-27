@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Load Balancer
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app_1
+      - app_2
+    networks:
+      - syncspace_net
+
+  # Node Instance 1
+  app_1:
+    build: .
+    environment:
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - redis
+    networks:
+      - syncspace_net
+
+  # Node Instance 2
+  app_2:
+    build: .
+    environment:
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - redis
+    networks:
+      - syncspace_net
+
+  # Shared Redis Instance
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - syncspace_net
+
+networks:
+  syncspace_net:
+    driver: bridge
