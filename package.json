@@ -4,6 +4,7 @@
   "description": "real-time collaborative document editor",
   "main": "index.js",
   "scripts": {
+    "build": "npm run build --prefix client",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
