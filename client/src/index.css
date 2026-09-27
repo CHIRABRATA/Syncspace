@@ -84,6 +84,12 @@ body {
 .animate-slideIn { animation: slideIn 0.2s ease forwards; }
 .animate-modalIn { animation: modalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scaleIn { animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
 .pulse-dot { animation: pulse-dot 2s infinite; }
 .syncbot-cursor { animation: syncbot-typing 0.8s infinite; }
 

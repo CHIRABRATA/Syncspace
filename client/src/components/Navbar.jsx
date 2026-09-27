@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { Wifi, WifiOff, Loader2, Bot, Users, Share2, Copy, Check, Mail, X, Sparkles } from 'lucide-react';
-import { api } from '../lib/api';
-
+import {
+  Wifi, WifiOff, Loader2, Bot, Users, Share2, Sparkles,
+  Download, Crown, Pencil, Eye
+} from 'lucide-react';
+import ShareModal from './ShareModal';
+import DownloadMenu from './DownloadMenu';
 
 function StatusBadge({ status }) {
   const configs = {
@@ -23,7 +26,27 @@ function StatusBadge({ status }) {
   );
 }
 
-function CollaboratorAvatar({ email, isSyncBot = false, index = 0 }) {
+function RoleBadge({ role }) {
+  const configs = {
+    OWNER: { icon: Crown, label: 'Owner', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    WRITE: { icon: Pencil, label: 'Can edit', color: '#4f8ef7', bg: 'rgba(79,142,247,0.12)' },
+    READ: { icon: Eye, label: 'Read only', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+  };
+  const cfg = configs[role] || configs.READ;
+  const Icon = cfg.icon;
+
+  return (
+    <div
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+      style={{ background: cfg.bg, color: cfg.color }}
+    >
+      <Icon size={12} />
+      <span className="hidden sm:inline">{cfg.label}</span>
+    </div>
+  );
+}
+
+function CollaboratorAvatar({ email, isSyncBot = false, index = 0, role }) {
   const colors = ['#4f8ef7', '#9b72f7', '#22d3ee', '#f87171', '#fbbf24', '#22c55e'];
   const color = isSyncBot ? '#9b72f7' : colors[index % colors.length];
 
@@ -32,9 +55,11 @@ function CollaboratorAvatar({ email, isSyncBot = false, index = 0 }) {
     ? '🤖'
     : (emailStr.length >= 2 ? emailStr.slice(0, 2).toUpperCase() : (emailStr[0]?.toUpperCase() || 'U'));
 
-  return (
-    <div className="relative group" title={isSyncBot ? 'SyncBot AI' : emailStr}>
+  const roleLabel = role === 'OWNER' ? '👑' : role === 'WRITE' ? '✏️' : '👁️';
+  const titleText = isSyncBot ? 'SyncBot AI' : `${emailStr} (${role || 'Collaborator'})`;
 
+  return (
+    <div className="relative group" title={titleText}>
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-transform hover:scale-110"
         style={{
@@ -54,49 +79,25 @@ function CollaboratorAvatar({ email, isSyncBot = false, index = 0 }) {
           style={{ background: 'var(--accent-purple)', borderColor: 'var(--bg-secondary)' }}
         />
       )}
+      {/* Role indicator dot */}
+      {!isSyncBot && role && (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 text-xs leading-none"
+          style={{ fontSize: '8px' }}
+        >
+          {roleLabel}
+        </span>
+      )}
     </div>
   );
 }
 
-export default function Navbar({ document, status, collaborators = [], syncBotActive = false, onOpenAiPrompt }) {
+export default function Navbar({ document, status, collaborators = [], syncBotActive = false, onOpenAiPrompt, docRole, currentUserId, getText }) {
   const [showShareModal, setShowShareModal] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviting, setInviting] = useState(false);
-  const [shareMsg, setShareMsg] = useState(null);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
-  const shareUrl = document ? `${window.location.origin}/?doc=${document.id}` : '';
-
-  const handleCopyLink = () => {
-    if (!shareUrl) return;
-    navigator.clipboard.writeText(shareUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  const handleCopyId = () => {
-    if (!document?.id) return;
-    navigator.clipboard.writeText(document.id);
-    setCopiedId(true);
-    setTimeout(() => setCopiedId(false), 2000);
-  };
-
-  const handleInvite = async (e) => {
-    e.preventDefault();
-    if (!inviteEmail.trim() || !document?.id) return;
-    setInviting(true);
-    setShareMsg(null);
-    try {
-      const res = await api.shareDocument(document.id, inviteEmail.trim());
-      setShareMsg({ type: 'success', text: res.message || 'Shared successfully!' });
-      setInviteEmail('');
-    } catch (err) {
-      setShareMsg({ type: 'error', text: err.message || 'Failed to share document' });
-    } finally {
-      setInviting(false);
-    }
-  };
+  const isOwner = docRole === 'OWNER';
+  const canEdit = docRole === 'OWNER' || docRole === 'WRITE';
 
   return (
     <>
@@ -120,8 +121,13 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
           )}
         </div>
 
-        {/* Dedicated AI Agent Writer Button */}
-        {document && (
+        {/* Role Badge */}
+        {document && docRole && (
+          <RoleBadge role={docRole} />
+        )}
+
+        {/* Dedicated AI Agent Writer Button - only for WRITE/OWNER */}
+        {document && canEdit && (
           <button
             onClick={onOpenAiPrompt}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all shadow-sm hover:opacity-95 hover:scale-[1.02] cursor-pointer"
@@ -136,8 +142,33 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
           </button>
         )}
 
-        {/* Share Button (Active when document is selected) */}
+        {/* Download Button - available to all with access */}
         {document && (
+          <div className="relative">
+            <button
+              onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <Download size={13} />
+              <span className="hidden sm:inline">Download</span>
+            </button>
+            {showDownloadMenu && (
+              <DownloadMenu
+                document={document}
+                getText={getText}
+                onClose={() => setShowDownloadMenu(false)}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Share Button (Only for OWNER) */}
+        {document && isOwner && (
           <button
             onClick={() => setShowShareModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -152,12 +183,11 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
           </button>
         )}
 
-
         {/* Collaborator Avatars */}
         {collaborators.length > 0 && (
           <div className="flex items-center -space-x-2">
             {collaborators.slice(0, 5).map((c, i) => (
-              <CollaboratorAvatar key={c.email || i} email={c.email} index={i} />
+              <CollaboratorAvatar key={c.email || i} email={c.email} index={i} role={c.role} />
             ))}
             {collaborators.length > 5 && (
               <div
@@ -182,123 +212,13 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
         <StatusBadge status={status} />
       </header>
 
-      {/* Share / Collaboration Modal */}
+      {/* Share Modal */}
       {showShareModal && document && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-          <div
-            className="w-full max-w-md rounded-2xl p-6 border shadow-2xl relative animate-scaleIn"
-            style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-          >
-            <button
-              onClick={() => { setShowShareModal(false); setShareMsg(null); }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-            >
-              <X size={18} />
-            </button>
-
-            <div className="flex items-center gap-2 mb-4">
-              <Share2 size={18} style={{ color: 'var(--accent-blue)' }} />
-              <h3 className="font-semibold text-base" style={{ color: 'var(--text-primary)' }}>
-                Share "{document.title}"
-              </h3>
-            </div>
-
-            <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-              Anyone with this link or document ID can join and edit simultaneously in real time.
-            </p>
-
-            {/* Share Link */}
-            <div className="mb-4">
-              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                Direct Share Link
-              </label>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={shareUrl}
-                  className="input-field py-2 flex-1 text-xs truncate select-all"
-                />
-                <button
-                  onClick={handleCopyLink}
-                  className="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all"
-                  style={{
-                    background: copiedLink ? 'var(--accent-green)' : 'var(--accent-blue)',
-                    color: 'white',
-                  }}
-                >
-                  {copiedLink ? <Check size={13} /> : <Copy size={13} />}
-                  <span>{copiedLink ? 'Copied!' : 'Copy'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Document ID */}
-            <div className="mb-5">
-              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                Document UUID
-              </label>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={document.id}
-                  className="input-field py-2 flex-1 font-mono text-xs select-all"
-                />
-                <button
-                  onClick={handleCopyId}
-                  className="px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all"
-                  style={{
-                    background: 'var(--bg-tertiary)',
-                    color: copiedId ? 'var(--accent-green)' : 'var(--text-primary)',
-                    border: '1px solid var(--border)',
-                  }}
-                >
-                  {copiedId ? <Check size={13} /> : <Copy size={13} />}
-                  <span>{copiedId ? 'Copied!' : 'Copy ID'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Invite by Email */}
-            <div className="pt-4 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                Invite Collaborator by Email
-              </label>
-              <form onSubmit={handleInvite} className="flex gap-2">
-                <input
-                  type="email"
-                  placeholder="collaborator@example.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="input-field py-2 flex-1 text-xs"
-                />
-                <button
-                  type="submit"
-                  disabled={!inviteEmail.trim() || inviting}
-                  className="px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5"
-                  style={{
-                    background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
-                    color: 'white',
-                    opacity: !inviteEmail.trim() || inviting ? 0.6 : 1,
-                  }}
-                >
-                  {inviting ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
-                  <span>Invite</span>
-                </button>
-              </form>
-
-              {shareMsg && (
-                <p
-                  className="text-xs mt-2.5"
-                  style={{
-                    color: shareMsg.type === 'success' ? 'var(--accent-green)' : 'var(--accent-red)',
-                  }}
-                >
-                  {shareMsg.text}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <ShareModal
+          document={document}
+          currentUserId={currentUserId}
+          onClose={() => setShowShareModal(false)}
+        />
       )}
     </>
   );

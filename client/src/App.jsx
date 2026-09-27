@@ -8,6 +8,8 @@ import Navbar from './components/Navbar';
 import Editor from './components/Editor';
 import AiPanel from './components/AiPanel';
 import AiPromptModal from './components/AiPromptModal';
+import DeleteConfirmModal from './components/DeleteConfirmModal';
+import ShareModal from './components/ShareModal';
 import './index.css';
 
 export default function App() {
@@ -24,6 +26,10 @@ export default function App() {
   const [aiPromptCursor, setAiPromptCursor] = useState(null);
   const [collaborators, setCollaborators] = useState([]);
   const [syncBotActive, setSyncBotActive] = useState(false);
+  const [docRole, setDocRole] = useState(null); // 'OWNER' | 'WRITE' | 'READ' | null
+  const [deleteTarget, setDeleteTarget] = useState(null); // document to delete
+  const [shareTarget, setShareTarget] = useState(null); // document to share
+  const [downloadTarget, setDownloadTarget] = useState(null); // document to download
 
 
   const {
@@ -40,6 +46,10 @@ export default function App() {
   const handleOp = useCallback((op) => {
     if (op.type === 'PRESENCE_UPDATE') {
       setCollaborators(op.collaborators || []);
+      return;
+    }
+    if (op.type === 'ERROR') {
+      console.warn('[SyncSpace] Server error:', op.error);
       return;
     }
     if (op.type === 'INSERT_OP' && op.senderId === 'syncbot-agent-id') {
@@ -64,10 +74,27 @@ export default function App() {
     }
   }, []);
 
+  // Handle role received from INIT_STATE
+  const handleRoleReceived = useCallback((role) => {
+    setDocRole(role);
+  }, []);
+
+  const handleRoleReceivedRef = useRef(handleRoleReceived);
+  useEffect(() => {
+    handleRoleReceivedRef.current = handleRoleReceived;
+  }, [handleRoleReceived]);
+
+  const stableOnRoleReceived = useCallback((role) => {
+    if (handleRoleReceivedRef.current) {
+      handleRoleReceivedRef.current(role);
+    }
+  }, []);
+
   const { status, send } = useWebSocket({
     token: auth?.token,
     documentId: selectedDoc?.id,
     onOp: stableOnOp,
+    onRoleReceived: stableOnRoleReceived,
   });
 
   // Verify stored token validity on initial load
@@ -106,6 +133,8 @@ export default function App() {
           setDocuments(docList);
           if (match) {
             setSelectedDoc(match);
+            // Set initial role from doc data
+            if (match.role) setDocRole(match.role);
             return;
           }
         }
@@ -113,6 +142,7 @@ export default function App() {
         setDocuments(docList);
         if (docList.length > 0 && !selectedDoc) {
           setSelectedDoc(docList[0]);
+          if (docList[0].role) setDocRole(docList[0].role);
         }
       })
       .catch((err) => {
@@ -136,6 +166,7 @@ export default function App() {
     setSelectedDoc(null);
     setDocuments([]);
     setCollaborators([]);
+    setDocRole(null);
     resetState();
   }, [resetState]);
 
@@ -151,6 +182,7 @@ export default function App() {
     if (doc?.id !== selectedDoc?.id) {
       resetState();
       setCollaborators([]);
+      setDocRole(doc?.role || null); // Set initial role from document list data
     }
     setSelectedDoc(doc);
     if (doc?.id) {
@@ -167,6 +199,70 @@ export default function App() {
     handleSelectDoc(doc);
   }, [handleSelectDoc]);
 
+  // ---- Document Actions ----
+
+  const handleDeleteDoc = useCallback((doc) => {
+    setDeleteTarget(doc);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.deleteDocument(deleteTarget.id);
+      setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+      if (selectedDoc?.id === deleteTarget.id) {
+        setSelectedDoc(null);
+        setDocRole(null);
+        resetState();
+      }
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      throw err;
+    }
+  }, [deleteTarget, selectedDoc, resetState]);
+
+  const handleRenameDoc = useCallback(async (doc, newTitle) => {
+    try {
+      await api.renameDocument(doc.id, newTitle);
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === doc.id ? { ...d, title: newTitle } : d))
+      );
+      if (selectedDoc?.id === doc.id) {
+        setSelectedDoc((prev) => prev ? { ...prev, title: newTitle } : prev);
+      }
+    } catch (err) {
+      console.error('Rename failed:', err);
+    }
+  }, [selectedDoc]);
+
+  const handleDuplicateDoc = useCallback(async (doc) => {
+    try {
+      const newDoc = await api.duplicateDocument(doc.id);
+      setDocuments((prev) => [newDoc, ...prev]);
+      handleSelectDoc(newDoc);
+    } catch (err) {
+      console.error('Duplicate failed:', err);
+    }
+  }, [handleSelectDoc]);
+
+  const handleLeaveDoc = useCallback(async (doc) => {
+    try {
+      await api.leaveDocument(doc.id);
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      if (selectedDoc?.id === doc.id) {
+        setSelectedDoc(null);
+        setDocRole(null);
+        resetState();
+      }
+    } catch (err) {
+      console.error('Leave failed:', err);
+    }
+  }, [selectedDoc, resetState]);
+
+  const handleShareDoc = useCallback((doc) => {
+    setShareTarget(doc || selectedDoc);
+  }, [selectedDoc]);
 
   // Compute visible text
   const text = getText();
@@ -253,6 +349,15 @@ export default function App() {
         onSelectDoc={handleSelectDoc}
         onLogout={handleLogout}
         onDocCreated={handleDocCreated}
+        onDeleteDoc={handleDeleteDoc}
+        onShareDoc={handleShareDoc}
+        onDownloadDoc={(doc) => {
+          handleSelectDoc(doc);
+          // Download triggers from navbar
+        }}
+        onRenameDoc={handleRenameDoc}
+        onDuplicateDoc={handleDuplicateDoc}
+        onLeaveDoc={handleLeaveDoc}
       />
 
       {/* Main Content */}
@@ -263,6 +368,9 @@ export default function App() {
           collaborators={collaborators}
           syncBotActive={syncBotActive}
           onOpenAiPrompt={handleOpenAiPrompt}
+          docRole={docRole}
+          currentUserId={auth.user?.id}
+          getText={getText}
         />
 
         <div className="flex flex-1 min-h-0">
@@ -274,6 +382,7 @@ export default function App() {
             onOpenAiPrompt={handleOpenAiPrompt}
             disabled={status !== 'connected' || !selectedDoc}
             document={selectedDoc}
+            docRole={docRole}
           />
 
           {/* AI Panel */}
@@ -293,6 +402,24 @@ export default function App() {
         onSubmit={handleAiPrompt}
         isWriting={syncBotActive}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          document={deleteTarget}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* Share Modal (triggered from sidebar menu) */}
+      {shareTarget && (
+        <ShareModal
+          document={shareTarget}
+          currentUserId={auth.user?.id}
+          onClose={() => setShareTarget(null)}
+        />
+      )}
     </div>
   );
 }

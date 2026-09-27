@@ -6,7 +6,7 @@ function getWsUrl() {
   return `${protocol}//${host}:3000`;
 }
 
-export function useWebSocket({ token, documentId, onOp }) {
+export function useWebSocket({ token, documentId, onOp, onRoleReceived }) {
   const wsRef = useRef(null);
   const [status, setStatus] = useState('disconnected'); // 'connecting' | 'connected' | 'disconnected'
   const reconnectTimer = useRef(null);
@@ -43,6 +43,10 @@ export function useWebSocket({ token, documentId, onOp }) {
       if (!mountedRef.current) return;
       try {
         const data = JSON.parse(event.data);
+        // Extract role from INIT_STATE and notify parent
+        if (data.type === 'INIT_STATE' && data.role) {
+          onRoleReceived?.(data.role);
+        }
         onOp?.(data);
       } catch (e) {
         console.error('[WS] Parse error:', e);
@@ -62,7 +66,7 @@ export function useWebSocket({ token, documentId, onOp }) {
     ws.onerror = () => {
       ws.close();
     };
-  }, [token, documentId, onOp]);
+  }, [token, documentId, onOp, onRoleReceived]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -96,4 +100,3 @@ export function useWebSocket({ token, documentId, onOp }) {
 
   return { status, send };
 }
-

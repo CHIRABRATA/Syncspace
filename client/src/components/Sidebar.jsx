@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import {
   FileText, Plus, ChevronRight, LogOut, User,
-  Loader2, Sparkles, Clock, Search, Link2, AlertCircle
+  Loader2, Sparkles, Clock, Search, Link2, AlertCircle,
+  Crown, Pencil, Eye
 } from 'lucide-react';
 import { api } from '../lib/api';
+import DocumentMenu from './DocumentMenu';
 
-export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onLogout, onDocCreated }) {
+export default function Sidebar({
+  user, documents, selectedDoc, onSelectDoc, onLogout, onDocCreated,
+  onDeleteDoc, onShareDoc, onDownloadDoc, onRenameDoc, onDuplicateDoc, onLeaveDoc
+}) {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -66,6 +71,14 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
   const formatDate = (iso) => {
     const d = new Date(iso);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const getRoleMiniIcon = (doc) => {
+    const role = doc.role;
+    if (role === 'OWNER') return <Crown size={9} style={{ color: '#fbbf24' }} />;
+    if (role === 'WRITE') return <Pencil size={9} style={{ color: '#4f8ef7' }} />;
+    if (role === 'READ') return <Eye size={9} style={{ color: '#22c55e' }} />;
+    return null;
   };
 
   return (
@@ -216,6 +229,7 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
         ) : (
           filtered.map((doc) => {
             const isSelected = selectedDoc?.id === doc.id;
+            const docRole = doc.role || (doc.owner_id === user?.id ? 'OWNER' : null);
             return (
               <button
                 key={doc.id}
@@ -234,10 +248,11 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
                 </div>
                 <div className="flex-1 min-w-0">
                   <p
-                    className="text-xs font-medium truncate"
+                    className="text-xs font-medium truncate flex items-center gap-1"
                     style={{ color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}
                   >
-                    {doc.title || 'Untitled'}
+                    <span className="truncate">{doc.title || 'Untitled'}</span>
+                    {getRoleMiniIcon(doc)}
                   </p>
                   {doc.updated_at && (
                     <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
@@ -246,10 +261,17 @@ export default function Sidebar({ user, documents, selectedDoc, onSelectDoc, onL
                     </p>
                   )}
                 </div>
-                <ChevronRight
-                  size={12}
-                  className="transition-transform group-hover:translate-x-0.5"
-                  style={{ color: isSelected ? 'var(--accent-blue)' : 'var(--text-muted)' }}
+
+                {/* Three-dot menu */}
+                <DocumentMenu
+                  document={doc}
+                  docRole={docRole}
+                  onRename={(newTitle) => onRenameDoc?.(doc, newTitle)}
+                  onShare={() => onShareDoc?.(doc)}
+                  onDownload={() => onDownloadDoc?.(doc)}
+                  onDuplicate={() => onDuplicateDoc?.(doc)}
+                  onDelete={() => onDeleteDoc?.(doc)}
+                  onLeave={() => onLeaveDoc?.(doc)}
                 />
               </button>
             );

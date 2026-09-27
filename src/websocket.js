@@ -23,7 +23,11 @@ function broadcastPresence(documentId) {
   for (const client of room.sockets) {
     if (client.user && !seen.has(client.user.id)) {
       seen.add(client.user.id);
-      uniqueUsers.push({ id: client.user.id, email: client.user.email });
+      uniqueUsers.push({
+        id: client.user.id,
+        email: client.user.email,
+        role: client.docRole || 'READ',
+      });
     }
   }
 
@@ -36,6 +40,43 @@ function broadcastPresence(documentId) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(presenceMsg);
     }
+  }
+}
+
+/**
+ * Determine a user's role for a document from the database.
+ * Returns 'OWNER' | 'WRITE' | 'READ' | null (no access)
+ */
+async function getUserDocumentRole(userId, documentId) {
+  try {
+    // Check if user is owner
+    const docResult = await db.query(
+      'SELECT owner_id FROM documents WHERE id = $1',
+      [documentId]
+    );
+
+    if (docResult.rows.length === 0) {
+      return null; // Document doesn't exist
+    }
+
+    if (docResult.rows[0].owner_id === userId) {
+      return 'OWNER';
+    }
+
+    // Check explicit permission
+    const permResult = await db.query(
+      'SELECT role FROM document_permissions WHERE document_id = $1 AND user_id = $2',
+      [documentId, userId]
+    );
+
+    if (permResult.rows.length === 0) {
+      return null; // No access
+    }
+
+    return permResult.rows[0].role; // 'READ' or 'WRITE'
+  } catch (err) {
+    console.error('getUserDocumentRole error:', err.message);
+    return null;
   }
 }
 
@@ -85,7 +126,7 @@ function initWebSocketServer(server) {
 
   });
 
-  server.on('upgrade', (request, socket, head) => {
+  server.on('upgrade', async (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     const token = url.searchParams.get('token');
     const documentId = url.searchParams.get('documentId');
@@ -96,39 +137,37 @@ function initWebSocketServer(server) {
       return;
     }
 
-    jwt.verify(token, JWT_SECRET, (err, decodedUser) => {
+    jwt.verify(token, JWT_SECRET, async (err, decodedUser) => {
       if (err) {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         socket.destroy();
         return;
       }
 
-      // Auto-grant write permission if document exists and user is not owner
-      db.query('SELECT owner_id FROM documents WHERE id = $1', [documentId])
-        .then((docRes) => {
-          if (docRes.rows.length > 0 && docRes.rows[0].owner_id !== decodedUser.id) {
-            db.query(
-              `INSERT INTO document_permissions (document_id, user_id, role)
-               VALUES ($1, $2, 'WRITE')
-               ON CONFLICT (document_id, user_id) DO NOTHING`,
-              [documentId, decodedUser.id]
-            ).catch((e) => console.error('Auto-grant error:', e.message));
-          }
-        })
-        .catch((e) => console.error('Doc check error:', e.message));
+      // ---- AUTHORIZATION CHECK ----
+      // Determine the user's role from the database (not from frontend)
+      const role = await getUserDocumentRole(decodedUser.id, documentId);
+
+      if (!role) {
+        // User has NO ACCESS to this document
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
 
       wss.handleUpgrade(request, socket, head, (ws) => {
         ws.id = crypto.randomUUID();
         ws.user = decodedUser;
         ws.userId = decodedUser.id;
         ws.documentId = documentId;
+        ws.docRole = role; // 'OWNER' | 'WRITE' | 'READ'
         wss.emit('connection', ws, request);
       });
     });
   });
 
   wss.on('connection', async (ws) => {
-    const { documentId, user } = ws;
+    const { documentId, user, docRole } = ws;
 
     // Synchronously create room structure to prevent race conditions on concurrent connects
     if (!localRooms.has(documentId)) {
@@ -172,6 +211,12 @@ function initWebSocketServer(server) {
         op.socketId = ws.id;
 
         if (op.type === 'INSERT_OP') {
+          // ---- WRITE PROTECTION: Only OWNER or WRITE can insert ----
+          if (ws.docRole === 'READ') {
+            ws.send(JSON.stringify({ type: 'ERROR', error: 'Read-only access. You cannot edit this document.' }));
+            return;
+          }
+
           room.crdt.insert(op.id, op.char, op.position);
 
           // Fast local broadcast to other connected tabs/clients
@@ -191,6 +236,12 @@ function initWebSocketServer(server) {
           // Schedule debounced database persistence
           scheduleDocumentSave(documentId, room.crdt.toString()).catch(() => {});
         } else if (op.type === 'DELETE_OP') {
+          // ---- WRITE PROTECTION: Only OWNER or WRITE can delete ----
+          if (ws.docRole === 'READ') {
+            ws.send(JSON.stringify({ type: 'ERROR', error: 'Read-only access. You cannot edit this document.' }));
+            return;
+          }
+
           room.crdt.delete(op.id);
 
           // Fast local broadcast to other connected tabs/clients
@@ -210,6 +261,12 @@ function initWebSocketServer(server) {
           // Schedule debounced database persistence
           scheduleDocumentSave(documentId, room.crdt.toString()).catch(() => {});
         } else if (op.type === 'AI_PROMPT') {
+          // ---- WRITE PROTECTION: Only OWNER or WRITE can trigger AI ----
+          if (ws.docRole === 'READ') {
+            ws.send(JSON.stringify({ type: 'ERROR', error: 'Read-only access. You cannot use AI Writer.' }));
+            return;
+          }
+
           console.log(`[AI Triggered] Prompt: "${op.prompt}" in Room: ${documentId}`);
           let insertPos = op.insertAtPosition;
           if (insertPos == null && room.crdt.nodes.length > 0) {
@@ -250,13 +307,14 @@ function initWebSocketServer(server) {
       await room.loadPromise;
     }
 
-    // Send complete initial CRDT state including nodes and text content
+    // Send complete initial CRDT state including nodes, text content, and the user's role
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(
         JSON.stringify({
           type: 'INIT_STATE',
           content: room.crdt.toString(),
           nodes: room.crdt.nodes.filter((n) => !n.deleted),
+          role: ws.docRole, // Send the user's role to the frontend
         })
       );
     }
@@ -266,7 +324,7 @@ function initWebSocketServer(server) {
 
     // Track active user presence in Redis
     try {
-      pubClient.hset(`presence:${documentId}`, user.id, JSON.stringify({ email: user.email, onlineAt: Date.now() }));
+      pubClient.hset(`presence:${documentId}`, user.id, JSON.stringify({ email: user.email, role: ws.docRole, onlineAt: Date.now() }));
       pubClient.expire(`presence:${documentId}`, 120);
     } catch (e) {}
   });
@@ -275,4 +333,3 @@ function initWebSocketServer(server) {
 }
 
 module.exports = { initWebSocketServer };
-

@@ -17,16 +17,18 @@ async function request(path, options = {}) {
     credentials: 'include' // Pass HttpOnly cookies if set during login
   });
   
+  // Handle 204 No Content (e.g., successful DELETE)
+  if (res.status === 204) {
+    return {};
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     // If token is invalid or expired, clear local storage and signal auth change
-    if ((res.status === 401 || res.status === 403) && path !== '/auth/login' && path !== '/auth/register') {
-      const errMsg = (data.error || data.message || '').toLowerCase();
-      if (errMsg.includes('token') || errMsg.includes('access denied') || res.status === 403) {
-        localStorage.removeItem('syncspace_token');
-        localStorage.removeItem('syncspace_user');
-        window.dispatchEvent(new CustomEvent('syncspace:logout'));
-      }
+    if (res.status === 401 && path !== '/auth/login' && path !== '/auth/register') {
+      localStorage.removeItem('syncspace_token');
+      localStorage.removeItem('syncspace_user');
+      window.dispatchEvent(new CustomEvent('syncspace:logout'));
     }
     throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
   }
@@ -55,16 +57,62 @@ export const api = {
     });
   },
 
+  getDocument: (documentId) => request(`/documents/${documentId}`),
+
+  updateDocument: (documentId, updates) =>
+    request(`/documents/${documentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    }),
+
   joinDocument: (documentId) =>
     request('/documents/join', {
       method: 'POST',
       body: JSON.stringify({ documentId }),
     }),
 
-  shareDocument: (documentId, email, role = 'WRITE') =>
+  // ---- Permission management (OWNER-only) ----
+
+  shareDocument: (documentId, email, role = 'READ') =>
     request(`/documents/${documentId}/share`, {
       method: 'POST',
       body: JSON.stringify({ email, role }),
     }),
-};
 
+  addPermission: (documentId, email, role = 'READ') =>
+    request(`/documents/${documentId}/permissions`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    }),
+
+  getPermissions: (documentId) =>
+    request(`/documents/${documentId}/permissions`),
+
+  updatePermission: (documentId, userId, role) =>
+    request(`/documents/${documentId}/permissions/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    }),
+
+  revokePermission: (documentId, userId) =>
+    request(`/documents/${documentId}/permissions/${userId}`, {
+      method: 'DELETE',
+    }),
+
+  // ---- Document actions ----
+
+  deleteDocument: (documentId) =>
+    request(`/documents/${documentId}`, { method: 'DELETE' }),
+
+  duplicateDocument: (documentId) =>
+    request(`/documents/${documentId}/duplicate`, { method: 'POST' }),
+
+  leaveDocument: (documentId) =>
+    request(`/documents/${documentId}/leave`, { method: 'POST' }),
+
+  renameDocument: (documentId, title) =>
+    request(`/documents/${documentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+};

@@ -1,11 +1,15 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { Bot, FileText, Sparkles } from 'lucide-react';
+import { Bot, FileText, Sparkles, Lock, Crown, Pencil, Eye } from 'lucide-react';
 
 const SYNCBOT_REGEX = /^@SyncBot\s+(.+)$/im;
 
-export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled, document, onOpenAiPrompt }) {
+export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled, document, onOpenAiPrompt, docRole }) {
   const textareaRef = useRef(null);
   const selectionRef = useRef({ start: 0, end: 0 });
+
+  const isReadOnly = docRole === 'READ';
+  const canEdit = docRole === 'OWNER' || docRole === 'WRITE';
+  const isFullyDisabled = disabled || isReadOnly;
 
   const handleSelect = useCallback(() => {
     if (textareaRef.current) {
@@ -28,7 +32,7 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
   }, [text]);
 
   const handleKeyDown = useCallback((e) => {
-    if (disabled) return;
+    if (isFullyDisabled) return;
     const ta = textareaRef.current;
     if (!ta) return;
 
@@ -126,10 +130,10 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
       });
       return;
     }
-  }, [disabled, onDelete, onInsert, onAiPrompt]);
+  }, [isFullyDisabled, onDelete, onInsert, onAiPrompt]);
 
   const handlePaste = useCallback((e) => {
-    if (disabled) return;
+    if (isFullyDisabled) return;
     e.preventDefault();
     const pasteText = e.clipboardData?.getData('text') || '';
     if (!pasteText) return;
@@ -154,7 +158,7 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
     requestAnimationFrame(() => {
       if (ta) ta.setSelectionRange(nextPos, nextPos);
     });
-  }, [disabled, onDelete, onInsert]);
+  }, [isFullyDisabled, onDelete, onInsert]);
 
   if (!document) {
     return (
@@ -186,6 +190,44 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
     );
   }
 
+  // Role indicator for the document paper
+  const roleIndicator = () => {
+    if (isReadOnly) {
+      return (
+        <div
+          className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+          style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}
+        >
+          <Eye size={12} />
+          <span>Read only</span>
+        </div>
+      );
+    }
+    if (docRole === 'OWNER') {
+      return (
+        <div
+          className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+          style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}
+        >
+          <Crown size={12} />
+          <span>Owner</span>
+        </div>
+      );
+    }
+    if (docRole === 'WRITE') {
+      return (
+        <div
+          className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
+          style={{ background: 'rgba(79,142,247,0.12)', color: '#4f8ef7', border: '1px solid rgba(79,142,247,0.25)' }}
+        >
+          <Pencil size={12} />
+          <span>Can edit</span>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <main
       className="flex-1 overflow-auto p-8 md:p-12 relative"
@@ -195,19 +237,35 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
         className="doc-paper max-w-4xl mx-auto min-h-full p-10 md:p-16 rounded-lg relative"
         style={{ minHeight: 'calc(100vh - 140px)' }}
       >
-        {/* @SyncBot hint badge */}
-        <div
-          className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium opacity-80 hover:opacity-100 transition-all cursor-pointer select-none"
-          style={{ background: 'rgba(155,114,247,0.12)', color: '#9b72f7', border: '1px solid rgba(155,114,247,0.3)' }}
-          onClick={() => {
-            const ta = textareaRef.current;
-            onOpenAiPrompt?.({ cursorIndex: ta ? ta.selectionStart : null });
-          }}
-          title="Open AI Writer"
-        >
-          <Sparkles size={12} />
-          <span>Ask SyncBot</span>
-        </div>
+        {/* Role indicator badge */}
+        {roleIndicator()}
+
+        {/* @SyncBot hint badge - only show for editable users */}
+        {canEdit && (
+          <div
+            className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium opacity-80 hover:opacity-100 transition-all cursor-pointer select-none"
+            style={{ background: 'rgba(155,114,247,0.12)', color: '#9b72f7', border: '1px solid rgba(155,114,247,0.3)' }}
+            onClick={() => {
+              const ta = textareaRef.current;
+              onOpenAiPrompt?.({ cursorIndex: ta ? ta.selectionStart : null });
+            }}
+            title="Open AI Writer"
+          >
+            <Sparkles size={12} />
+            <span>Ask SyncBot</span>
+          </div>
+        )}
+
+        {/* Read-only lock indicator at top right for read-only users */}
+        {isReadOnly && (
+          <div
+            className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{ background: 'rgba(34,197,94,0.08)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}
+          >
+            <Lock size={12} />
+            <span>Viewing only</span>
+          </div>
+        )}
 
         <textarea
           ref={textareaRef}
@@ -217,39 +275,44 @@ export default function Editor({ text, onInsert, onDelete, onAiPrompt, disabled,
           onKeyUp={handleSelect}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          disabled={disabled}
+          readOnly={isReadOnly}
+          disabled={disabled && !isReadOnly}
           className="w-full h-full resize-none outline-none bg-transparent editor-font"
           style={{
             color: '#1a1a2e',
             fontSize: '16px',
             lineHeight: '1.8',
             minHeight: 'calc(100vh - 200px)',
-            caretColor: '#4f8ef7',
-            cursor: disabled ? 'not-allowed' : 'text',
+            caretColor: isReadOnly ? 'transparent' : '#4f8ef7',
+            cursor: isReadOnly ? 'default' : (disabled ? 'not-allowed' : 'text'),
+            userSelect: isReadOnly ? 'text' : undefined,
           }}
-          placeholder="Start typing here...&#10;&#10;Tip: Click the 'AI Writer' button in the toolbar to automatically generate text inside this document!"
-          spellCheck
+          placeholder={isReadOnly
+            ? 'This document is read-only. You can view and download, but not edit.'
+            : "Start typing here...\n\nTip: Click the 'AI Writer' button in the toolbar to automatically generate text inside this document!"
+          }
+          spellCheck={!isReadOnly}
         />
 
-        {/* Floating AI Prompt Button at bottom right of document paper */}
-        <button
-          onClick={() => {
-            const ta = textareaRef.current;
-            onOpenAiPrompt?.({ cursorIndex: ta ? ta.selectionStart : null });
-          }}
-          className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold text-white shadow-xl transition-all hover:scale-105 cursor-pointer"
-          style={{
-            background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
-            boxShadow: '0 4px 15px rgba(155, 114, 247, 0.4)',
-          }}
-          title="Ask AI to write into this document"
-        >
-          <Sparkles size={13} />
-          <span>Ask AI to Write</span>
-        </button>
+        {/* Floating AI Prompt Button at bottom right of document paper - only for editors */}
+        {canEdit && (
+          <button
+            onClick={() => {
+              const ta = textareaRef.current;
+              onOpenAiPrompt?.({ cursorIndex: ta ? ta.selectionStart : null });
+            }}
+            className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold text-white shadow-xl transition-all hover:scale-105 cursor-pointer"
+            style={{
+              background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
+              boxShadow: '0 4px 15px rgba(155, 114, 247, 0.4)',
+            }}
+            title="Ask AI to write into this document"
+          >
+            <Sparkles size={13} />
+            <span>Ask AI to Write</span>
+          </button>
+        )}
       </div>
     </main>
   );
 }
-
-
