@@ -24,21 +24,48 @@
 // This handles REAL-TIME CONNECTION + BROADCASTING.
 // It does NOT yet solve CONCURRENT EDITING / CRDT / OT.
 
-
-
+const { scheduleDocumentSave } = require('./queue');
 const { WebSocketServer, WebSocket } = require('ws');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./middleware/auth');
+const { DocumentCRDT } = require('./crdt');
+const { pubClient, subClient } = require('./redis');
 
-// Map of documentId -> Set of connected WebSocket clients
-// Structure: { "doc-uuid-123": Set<WebSocket> }
-const rooms = new Map();
+// Local Map for sockets connected to THIS specific server instance
+const localRooms = new Map();
 
 function initWebSocketServer(server) {
-  // Attach WebSocket server to the existing HTTP server instance
   const wss = new WebSocketServer({ noServer: true });
 
-  // 1. Handle HTTP to WebSocket Upgrade Handshake with Auth
+  // Subscribe to Redis pattern for all document rooms
+  subClient.psubscribe('doc_room:*', (err, count) => {
+    if (err) console.error('Failed to subscribe to Redis channels:', err);
+  });
+
+  // Listen for messages from other server instances via Redis
+  subClient.on('pmessage', (pattern, channel, message) => {
+    const documentId = channel.replace('doc_room:', '');
+    const room = localRooms.get(documentId);
+
+    if (!room) return;
+
+    const parsedEvent = JSON.parse(message);
+
+    // Apply operation to local CRDT if received from another instance
+    if (parsedEvent.type === 'INSERT_OP') {
+      room.crdt.insert(parsedEvent.id, parsedEvent.char, parsedEvent.position);
+    } else if (parsedEvent.type === 'DELETE_OP') {
+      room.crdt.delete(parsedEvent.id);
+    }
+
+    // Broadcast message to local WebSocket connections on this instance
+    for (const client of room.sockets) {
+      if (client.readyState === WebSocket.OPEN && client.userId !== parsedEvent.senderId) {
+        client.send(message);
+      }
+    }
+  });
+
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
     const token = url.searchParams.get('token');
@@ -50,7 +77,6 @@ function initWebSocketServer(server) {
       return;
     }
 
-    // Verify JWT before allowing protocol upgrade
     jwt.verify(token, JWT_SECRET, (err, decodedUser) => {
       if (err) {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
@@ -58,83 +84,75 @@ function initWebSocketServer(server) {
         return;
       }
 
-      // Complete the WebSocket handshake
       wss.handleUpgrade(request, socket, head, (ws) => {
-        ws.user = decodedUser; // Attach authenticated user data
-        ws.documentId = documentId; // Attach requested room ID
+        ws.user = decodedUser;
+        ws.userId = decodedUser.id;
+        ws.documentId = documentId;
         wss.emit('connection', ws, request);
       });
     });
   });
 
-  // 2. Connection Lifecycle Management
   wss.on('connection', (ws) => {
     const { documentId, user } = ws;
 
-    // Add socket to room
-    if (!rooms.has(documentId)) {
-      rooms.set(documentId, new Set());
+    if (!localRooms.has(documentId)) {
+      localRooms.set(documentId, {
+        sockets: new Set(),
+        crdt: new DocumentCRDT(),
+      });
     }
-    rooms.get(documentId).add(ws);
 
-    console.log(`User ${user.email} joined room: ${documentId}`);
+    const room = localRooms.get(documentId);
+    room.sockets.add(ws);
 
-    // Broadcast user joined event to other clients in room
-    broadcastToRoom(documentId, ws, {
-      type: 'USER_JOINED',
-      userId: user.id,
-      email: user.email,
-    });
+    // Send initial CRDT state
+    ws.send(
+      JSON.stringify({
+        type: 'INIT_STATE',
+        content: room.crdt.toString(),
+      })
+    );
 
-    // Handle Incoming Messages
+    // Track active user presence in Redis with 60-second expiration
+    pubClient.hset(`presence:${documentId}`, user.id, JSON.stringify({ email: user.email, onlineAt: Date.now() }));
+    pubClient.expire(`presence:${documentId}`, 60);
+
+    // Handle incoming messages
     ws.on('message', (message) => {
       try {
-        const parsed = JSON.parse(message);
-        
-        // Broadcast incoming document updates to everyone in the room EXCEPT the sender
-        broadcastToRoom(documentId, ws, {
-          type: parsed.type || 'DOC_UPDATE',
-          payload: parsed.payload,
-          senderId: user.id,
-        });
+        const op = JSON.parse(message);
+        op.senderId = user.id;
+
+        if (op.type === 'INSERT_OP' || op.type == 'DELETE_OP') {
+          if(os.type ==='INSERT_OP'){
+            room.crdt.insert(op.id, op.char, op.position);
+          }else if(os.type ==='DELETE_OP'){
+            room.crdt.delete(op.id);
+          }
+        } 
+
+        // PUBLISH TO REDIS: All instances (including this one via sub) receive this
+        pubClient.publish(`doc_room:${documentId}`, JSON.stringify(op));
       } catch (err) {
-        ws.send(JSON.stringify({ error: 'Invalid JSON payload' }));
+        ws.send(JSON.stringify({ error: 'Invalid payload' }));
       }
+      scheduleDocumentSave(documentId, room.crdt.toString());
     });
 
-    // Handle Disconnection & Room Cleanup
     ws.on('close', () => {
-      const room = rooms.get(documentId);
       if (room) {
-        room.delete(ws);
-        if (room.size === 0) {
-          rooms.delete(documentId); // Garbage collect empty room
-        } else {
-          broadcastToRoom(documentId, null, {
-            type: 'USER_LEFT',
-            userId: user.id,
-          });
+        room.sockets.delete(ws);
+        if (room.sockets.size === 0) {
+          localRooms.delete(documentId);
         }
       }
-      console.log(`User ${user.email} left room: ${documentId}`);
+      // Remove presence on disconnect
+      pubClient.hdel(`presence:${documentId}`, user.id);
     });
   });
 
   return wss;
-}
-
-// Utility: Broadcast message to room members
-function broadcastToRoom(documentId, senderWs, data) {
-  const room = rooms.get(documentId);
-  if (!room) return;
-
-  const payload = JSON.stringify(data);
-  for (const client of room) {
-    // Send to active connections, skip the sender if specified
-    if (client !== senderWs && client.readyState === WebSocket.OPEN) {
-      client.send(payload);
-    }
-  }
 }
 
 module.exports = { initWebSocketServer };
