@@ -19,7 +19,11 @@ const allowedOrigins = [
   'https://syncspace08.netlify.app',
   'http://localhost:5173',
   'http://localhost:5174',
-];
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -29,7 +33,8 @@ const corsOptions = {
     const isAllowed =
       allowedOrigins.includes(origin) ||
       origin.endsWith('.netlify.app') ||
-      origin.endsWith('.vercel.app');
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.onrender.com');
 
     if (isAllowed) {
       callback(null, true);
@@ -40,14 +45,20 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers',
+  ],
   optionsSuccessStatus: 200,
 };
 
-// 1. Explicitly respond to pre-flight OPTIONS requests across all routes
-app.options('*', cors(corsOptions));
-
-// 2. Register CORS middleware BEFORE rate limiters, helmet, and route mounts
+// 1. Register CORS middleware BEFORE rate limiters, helmet, and route mounts
+// Handles both regular API requests and OPTIONS preflight checks across all routes
 app.use(cors(corsOptions));
 
 // Security Headers (configured to allow cross-origin resource access)
