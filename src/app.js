@@ -16,9 +16,7 @@ const server = http.createServer(app);
 
 // Allowed origins configuration
 const allowedOrigins = [
-  'https://syncspace08.netlify.app',
-  'http://localhost:5173',
-  'https://syncspace-pink-tau.vercel.app',
+  'https://syncspace08.netlify.app'
 ];
 
 const corsOptions = {
