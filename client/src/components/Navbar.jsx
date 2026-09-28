@@ -1,96 +1,14 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Wifi, WifiOff, Loader2, Bot, Users, Share2, Sparkles,
-  Download, Crown, Pencil, Eye
+  Users, Share2, Sparkles, Download
 } from 'lucide-react';
 import ShareModal from './ShareModal';
 import DownloadMenu from './DownloadMenu';
-
-function StatusBadge({ status }) {
-  const configs = {
-    connected: { icon: Wifi, label: 'Connected', color: 'var(--accent-green)', bg: 'rgba(34,197,94,0.12)' },
-    connecting: { icon: Loader2, label: 'Connecting...', color: 'var(--accent-amber)', bg: 'rgba(251,191,36,0.12)' },
-    disconnected: { icon: WifiOff, label: 'Disconnected', color: 'var(--accent-red)', bg: 'rgba(248,113,113,0.12)' },
-  };
-  const cfg = configs[status] || configs.disconnected;
-  const Icon = cfg.icon;
-
-  return (
-    <div
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-      style={{ background: cfg.bg, color: cfg.color }}
-    >
-      <Icon size={12} className={status === 'connecting' ? 'animate-spin' : ''} />
-      <span className="hidden sm:inline">{cfg.label}</span>
-    </div>
-  );
-}
-
-function RoleBadge({ role }) {
-  const configs = {
-    OWNER: { icon: Crown, label: 'Owner', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
-    WRITE: { icon: Pencil, label: 'Can edit', color: '#4f8ef7', bg: 'rgba(79,142,247,0.12)' },
-    READ: { icon: Eye, label: 'Read only', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
-  };
-  const cfg = configs[role] || configs.READ;
-  const Icon = cfg.icon;
-
-  return (
-    <div
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
-      style={{ background: cfg.bg, color: cfg.color }}
-    >
-      <Icon size={12} />
-      <span className="hidden sm:inline">{cfg.label}</span>
-    </div>
-  );
-}
-
-function CollaboratorAvatar({ email, isSyncBot = false, index = 0, role }) {
-  const colors = ['#4f8ef7', '#9b72f7', '#22d3ee', '#f87171', '#fbbf24', '#22c55e'];
-  const color = isSyncBot ? '#9b72f7' : colors[index % colors.length];
-
-  const emailStr = typeof email === 'string' ? email : (email?.email || '');
-  const initials = isSyncBot
-    ? '🤖'
-    : (emailStr.length >= 2 ? emailStr.slice(0, 2).toUpperCase() : (emailStr[0]?.toUpperCase() || 'U'));
-
-  const roleLabel = role === 'OWNER' ? '👑' : role === 'WRITE' ? '✏️' : '👁️';
-  const titleText = isSyncBot ? 'SyncBot AI' : `${emailStr} (${role || 'Collaborator'})`;
-
-  return (
-    <div className="relative group" title={titleText}>
-      <div
-        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-transform hover:scale-110"
-        style={{
-          background: isSyncBot
-            ? 'linear-gradient(135deg, #9b72f7, #4f8ef7)'
-            : `${color}22`,
-          color: isSyncBot ? 'white' : color,
-          borderColor: color,
-          fontSize: isSyncBot ? '14px' : undefined,
-        }}
-      >
-        {isSyncBot ? <Bot size={14} /> : initials}
-      </div>
-      {isSyncBot && (
-        <span
-          className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full pulse-dot border"
-          style={{ background: 'var(--accent-purple)', borderColor: 'var(--bg-secondary)' }}
-        />
-      )}
-      {/* Role indicator dot */}
-      {!isSyncBot && role && (
-        <span
-          className="absolute -bottom-0.5 -right-0.5 text-xs leading-none"
-          style={{ fontSize: '8px' }}
-        >
-          {roleLabel}
-        </span>
-      )}
-    </div>
-  );
-}
+import ConnectionStatus from './ConnectionStatus';
+import PermissionBadge from './PermissionBadge';
+import CollaboratorAvatars from './CollaboratorAvatars';
+import SyncBotOrb from './SyncBotOrb';
 
 export default function Navbar({ document, status, collaborators = [], syncBotActive = false, onOpenAiPrompt, docRole, currentUserId, getText }) {
   const [showShareModal, setShowShareModal] = useState(false);
@@ -101,9 +19,19 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
 
   return (
     <>
-      <header
-        className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0"
-        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
+      <motion.header
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        className="flex items-center gap-3 px-5 py-2.5 flex-shrink-0 relative z-10"
+        style={{
+          background: 'rgba(22, 27, 39, 0.72)',
+          backdropFilter: 'blur(16px) saturate(1.4)',
+          WebkitBackdropFilter: 'blur(16px) saturate(1.4)',
+          borderBottom: '1px solid rgba(42, 51, 82, 0.5)',
+          boxShadow: '0 1px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.03)',
+        }}
+        role="banner"
       >
         {/* Document Title */}
         <div className="flex-1 min-w-0">
@@ -116,101 +44,140 @@ export default function Navbar({ document, status, collaborators = [], syncBotAc
           {document && (
             <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-muted)' }}>
               <Users size={10} />
-              {collaborators.length > 0 ? `${collaborators.length} collaborator${collaborators.length !== 1 ? 's' : ''}` : 'Ready for live collaboration'}
+              {collaborators.length > 0
+                ? `${collaborators.length} collaborator${collaborators.length !== 1 ? 's' : ''}`
+                : 'Ready for live collaboration'}
             </p>
           )}
         </div>
 
         {/* Role Badge */}
-        {document && docRole && (
-          <RoleBadge role={docRole} />
-        )}
+        <AnimatePresence>
+          {document && docRole && (
+            <PermissionBadge role={docRole} />
+          )}
+        </AnimatePresence>
 
-        {/* Dedicated AI Agent Writer Button - only for WRITE/OWNER */}
-        {document && canEdit && (
-          <button
-            onClick={onOpenAiPrompt}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all shadow-sm hover:opacity-95 hover:scale-[1.02] cursor-pointer"
-            style={{
-              background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
-              boxShadow: '0 2px 10px rgba(155, 114, 247, 0.35)',
-            }}
-            title="Ask AI to write into this document"
-          >
-            <Sparkles size={13} className={syncBotActive ? 'animate-spin' : ''} />
-            <span>AI Writer</span>
-          </button>
-        )}
-
-        {/* Download Button - available to all with access */}
-        {document && (
-          <div className="relative">
-            <button
-              onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+        {/* AI Writer Button - only for WRITE/OWNER */}
+        <AnimatePresence>
+          {document && canEdit && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={onOpenAiPrompt}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-shadow cursor-pointer"
               style={{
-                background: 'var(--bg-tertiary)',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border)',
+                background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
+                boxShadow: syncBotActive
+                  ? '0 2px 15px rgba(155, 114, 247, 0.5), 0 0 25px rgba(34, 211, 238, 0.2)'
+                  : '0 2px 10px rgba(155, 114, 247, 0.3)',
               }}
+              title="Ask AI to write into this document"
+              aria-label="Open AI Writer"
+              id="ai-writer-btn"
             >
-              <Download size={13} />
-              <span className="hidden sm:inline">Download</span>
-            </button>
-            {showDownloadMenu && (
-              <DownloadMenu
-                document={document}
-                getText={getText}
-                onClose={() => setShowDownloadMenu(false)}
-              />
-            )}
-          </div>
-        )}
+              {syncBotActive ? (
+                <SyncBotOrb active size={16} />
+              ) : (
+                <Sparkles size={13} />
+              )}
+              <span className="hidden sm:inline">{syncBotActive ? 'Writing...' : 'AI Writer'}</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Download Button */}
+        <AnimatePresence>
+          {document && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="relative"
+            >
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                style={{
+                  background: 'rgba(30, 36, 56, 0.6)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid rgba(42, 51, 82, 0.5)',
+                  backdropFilter: 'blur(8px)',
+                }}
+                aria-label="Download document"
+                id="download-btn"
+              >
+                <Download size={13} />
+                <span className="hidden sm:inline">Download</span>
+              </motion.button>
+              <AnimatePresence>
+                {showDownloadMenu && (
+                  <DownloadMenu
+                    document={document}
+                    getText={getText}
+                    onClose={() => setShowDownloadMenu(false)}
+                  />
+                )}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Share Button (Only for OWNER) */}
-        {document && isOwner && (
-          <button
-            onClick={() => setShowShareModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: 'var(--bg-tertiary)',
-              color: 'var(--accent-blue)',
-              border: '1px solid var(--border)',
-            }}
-          >
-            <Share2 size={13} />
-            <span>Share</span>
-          </button>
-        )}
+        <AnimatePresence>
+          {document && isOwner && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              whileHover={{ scale: 1.03, borderColor: 'rgba(79,142,247,0.4)' }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => setShowShareModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+              style={{
+                background: 'rgba(30, 36, 56, 0.6)',
+                color: 'var(--accent-blue)',
+                border: '1px solid rgba(42, 51, 82, 0.5)',
+                backdropFilter: 'blur(8px)',
+              }}
+              aria-label="Share document"
+              id="share-btn"
+            >
+              <Share2 size={13} />
+              <span>Share</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* Collaborator Avatars */}
         {collaborators.length > 0 && (
-          <div className="flex items-center -space-x-2">
-            {collaborators.slice(0, 5).map((c, i) => (
-              <CollaboratorAvatar key={c.email || i} email={c.email} index={i} role={c.role} />
-            ))}
-            {collaborators.length > 5 && (
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2"
-                style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}
-              >
-                +{collaborators.length - 5}
-              </div>
-            )}
-          </div>
+          <CollaboratorAvatars
+            collaborators={collaborators}
+            syncBotActive={syncBotActive}
+          />
         )}
 
-        {/* SyncBot Avatar (when active) */}
-        {syncBotActive && (
-          <div className="flex items-center gap-1.5">
-            <CollaboratorAvatar isSyncBot email="SyncBot AI" />
-            <span className="text-xs ai-shimmer font-medium hidden sm:inline">SyncBot typing...</span>
-          </div>
-        )}
+        {/* SyncBot Active Indicator (text) */}
+        <AnimatePresence>
+          {syncBotActive && (
+            <motion.span
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              className="text-xs ai-shimmer font-medium hidden sm:inline"
+            >
+              SyncBot typing...
+            </motion.span>
+          )}
+        </AnimatePresence>
 
         {/* Connection Status */}
-        <StatusBadge status={status} />
-      </header>
+        <ConnectionStatus status={status} />
+      </motion.header>
 
       {/* Share Modal */}
       {showShareModal && document && (

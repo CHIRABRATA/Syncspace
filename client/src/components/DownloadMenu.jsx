@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Download, FileText, FileCode, X } from 'lucide-react';
 
 export default function DownloadMenu({ document, getText, onClose }) {
@@ -75,14 +76,23 @@ export default function DownloadMenu({ document, getText, onClose }) {
   ];
 
   return (
-    <div
+    <motion.div
       ref={menuRef}
-      className="absolute top-full right-0 mt-1 w-48 rounded-xl border shadow-2xl z-50 overflow-hidden animate-scaleIn"
-      style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+      initial={{ opacity: 0, scale: 0.95, y: -4 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: -4 }}
+      transition={{ duration: 0.15, ease: 'easeOut' }}
+      className="absolute top-full right-0 mt-1.5 w-48 rounded-xl border shadow-2xl z-50 overflow-hidden"
+      style={{
+        background: 'rgba(22, 27, 39, 0.95)',
+        backdropFilter: 'blur(16px)',
+        borderColor: 'rgba(42, 51, 82, 0.6)',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.5), 0 0 15px rgba(79,142,247,0.1)',
+      }}
     >
-      <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'rgba(42, 51, 82, 0.4)' }}>
         <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Download as</span>
-        <button onClick={() => { setShow(false); onClose?.(); }} className="p-0.5 rounded hover:bg-white/5">
+        <button onClick={() => { setShow(false); onClose?.(); }} className="p-0.5 rounded hover:bg-white/5 cursor-pointer">
           <X size={12} style={{ color: 'var(--text-muted)' }} />
         </button>
       </div>
@@ -92,7 +102,7 @@ export default function DownloadMenu({ document, getText, onClose }) {
           <button
             key={f.ext}
             onClick={f.handler}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium transition-all hover:bg-white/5"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium transition-all hover:bg-white/5 cursor-pointer"
             style={{ color: 'var(--text-primary)' }}
           >
             <Icon size={14} style={{ color: 'var(--accent-blue)' }} />
@@ -101,6 +111,6 @@ export default function DownloadMenu({ document, getText, onClose }) {
           </button>
         );
       })}
-    </div>
+    </motion.div>
   );
 }

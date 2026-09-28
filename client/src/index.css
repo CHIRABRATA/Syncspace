@@ -103,6 +103,28 @@ body {
   background-clip: text;
 }
 
+/* SyncBot Character Insertion Glow */
+@keyframes syncbot-glow-fade {
+  0% {
+    background-color: rgba(34, 211, 238, 0.45);
+    box-shadow: 0 0 10px rgba(34, 211, 238, 0.7), 0 0 18px rgba(155, 114, 247, 0.5);
+    border-radius: 2px;
+  }
+  60% {
+    background-color: rgba(155, 114, 247, 0.25);
+    box-shadow: 0 0 6px rgba(155, 114, 247, 0.4);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+.syncbot-highlight {
+  display: inline;
+  animation: syncbot-glow-fade 1.2s ease-out forwards;
+}
+
 /* Document paper */
 .doc-paper {
   background: #ffffff;

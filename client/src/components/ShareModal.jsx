@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Share2, Copy, Check, Mail, X, Loader2, Crown,
   Pencil, Eye, ChevronDown, UserMinus, Shield
@@ -119,15 +120,27 @@ export default function ShareModal({ document, currentUserId, onClose }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      role="dialog"
+      aria-modal="true"
     >
-      <div
-        className="w-full max-w-lg rounded-2xl p-6 border shadow-2xl relative animate-scaleIn"
-        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 8 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="w-full max-w-lg rounded-2xl p-6 border shadow-2xl relative"
+        style={{
+          background: 'rgba(22, 27, 39, 0.94)',
+          backdropFilter: 'blur(20px)',
+          borderColor: 'rgba(42, 51, 82, 0.6)',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(79, 142, 247, 0.1)',
+        }}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+          className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/5 cursor-pointer"
+          aria-label="Close share dialog"
         >
           <X size={18} />
         </button>
@@ -396,7 +409,7 @@ export default function ShareModal({ document, currentUserId, onClose }) {
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

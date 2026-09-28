@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FileText, Plus, ChevronRight, LogOut, User,
+  FileText, Plus, LogOut,
   Loader2, Sparkles, Clock, Search, Link2, AlertCircle,
   Crown, Pencil, Eye
 } from 'lucide-react';
@@ -15,7 +16,7 @@ export default function Sidebar({
   const [joining, setJoining] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [joinInput, setJoinInput] = useState('');
-  const [activeTab, setActiveTab] = useState('create'); // 'create' | 'join'
+  const [activeTab, setActiveTab] = useState('create');
   const [errorMessage, setErrorMessage] = useState('');
   const [search, setSearch] = useState('');
 
@@ -40,7 +41,6 @@ export default function Sidebar({
     let input = joinInput.trim();
     if (!input) return;
 
-    // Support pasted full URLs (e.g. http://localhost:5173/?doc=uuid/w), query params, or raw UUIDs with /w or /r
     const match = input.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:[\/:]([rwRW]))?/i);
     let docId = input;
     if (match) {
@@ -60,7 +60,6 @@ export default function Sidebar({
       setJoining(false);
     }
   };
-
 
   const filtered = documents.filter((d) =>
     d.title?.toLowerCase().includes(search.toLowerCase())
@@ -83,107 +82,157 @@ export default function Sidebar({
   };
 
   return (
-    <aside
-      className="flex flex-col h-full w-64 flex-shrink-0 border-r"
-      style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
+    <motion.aside
+      initial={{ x: -20, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+      className="flex flex-col h-full w-64 flex-shrink-0 relative z-10"
+      style={{
+        background: 'rgba(22, 27, 39, 0.85)',
+        backdropFilter: 'blur(20px) saturate(1.3)',
+        WebkitBackdropFilter: 'blur(20px) saturate(1.3)',
+        borderRight: '1px solid rgba(42, 51, 82, 0.4)',
+      }}
+      role="navigation"
+      aria-label="Document sidebar"
     >
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)' }}
+      <div className="flex items-center gap-2.5 px-5 py-4 border-b" style={{ borderColor: 'rgba(42, 51, 82, 0.3)' }}>
+        <motion.div
+          whileHover={{ scale: 1.05, rotate: 5 }}
+          className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{
+            background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
+            boxShadow: '0 2px 10px rgba(79, 142, 247, 0.3)',
+          }}
         >
-          <Sparkles size={14} className="text-white" />
+          <Sparkles size={15} className="text-white" />
+        </motion.div>
+        <div>
+          <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>SyncSpace</span>
+          <p className="text-[9px] font-medium" style={{ color: 'var(--text-muted)' }}>Collaborative Editor</p>
         </div>
-        <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>SyncSpace</span>
       </div>
 
-      {/* Action Tabs: New Doc vs Join */}
-      <div className="px-4 pt-3 pb-2 flex gap-1 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-        <button
-          onClick={() => { setActiveTab('create'); setErrorMessage(''); }}
-          className="flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center"
-          style={{
-            background: activeTab === 'create' ? 'var(--bg-tertiary)' : 'transparent',
-            color: activeTab === 'create' ? 'var(--text-primary)' : 'var(--text-muted)',
-          }}
-        >
-          New Document
-        </button>
-        <button
-          onClick={() => { setActiveTab('join'); setErrorMessage(''); }}
-          className="flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center flex items-center justify-center gap-1"
-          style={{
-            background: activeTab === 'join' ? 'var(--bg-tertiary)' : 'transparent',
-            color: activeTab === 'join' ? 'var(--text-primary)' : 'var(--text-muted)',
-          }}
-        >
-          <Link2 size={11} />
-          Join Existing
-        </button>
+      {/* Action Tabs */}
+      <div className="px-4 pt-3 pb-2 flex gap-1 border-b" style={{ borderColor: 'rgba(42, 51, 82, 0.3)' }}>
+        {[
+          { key: 'create', label: 'New Document', icon: null },
+          { key: 'join', label: 'Join Existing', icon: Link2 },
+        ].map(({ key, label, icon: Icon }) => (
+          <motion.button
+            key={key}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => { setActiveTab(key); setErrorMessage(''); }}
+            className="flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+            style={{
+              background: activeTab === key ? 'rgba(30, 36, 56, 0.8)' : 'transparent',
+              color: activeTab === key ? 'var(--text-primary)' : 'var(--text-muted)',
+              border: activeTab === key ? '1px solid rgba(42, 51, 82, 0.4)' : '1px solid transparent',
+            }}
+          >
+            {Icon && <Icon size={11} />}
+            {label}
+          </motion.button>
+        ))}
       </div>
 
       {/* Creation / Join Form */}
       <div className="px-4 py-2.5">
-        {activeTab === 'create' ? (
-          <form onSubmit={handleCreate} className="flex gap-2">
-            <input
-              type="text"
-              className="input-field py-2 flex-1"
-              placeholder="Document title..."
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              style={{ fontSize: '12px' }}
-            />
-            <button
-              type="submit"
-              disabled={!newTitle.trim() || creating}
-              className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all"
-              style={{
-                background: newTitle.trim() ? 'linear-gradient(135deg, #4f8ef7, #9b72f7)' : 'var(--bg-tertiary)',
-                border: '1px solid var(--border)',
-                cursor: newTitle.trim() ? 'pointer' : 'default',
-              }}
+        <AnimatePresence mode="wait">
+          {activeTab === 'create' ? (
+            <motion.form
+              key="create"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ duration: 0.15 }}
+              onSubmit={handleCreate}
+              className="flex gap-2"
             >
-              {creating ? (
-                <Loader2 size={14} className="animate-spin text-white" />
-              ) : (
-                <Plus size={14} style={{ color: newTitle.trim() ? 'white' : 'var(--text-muted)' }} />
-              )}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleJoin} className="flex gap-2">
-            <input
-              type="text"
-              className="input-field py-2 flex-1 font-mono text-xs"
-              placeholder="Paste Doc ID / Link"
-              value={joinInput}
-              onChange={(e) => setJoinInput(e.target.value)}
-              style={{ fontSize: '11px' }}
-            />
-            <button
-              type="submit"
-              disabled={!joinInput.trim() || joining}
-              className="flex-shrink-0 px-2.5 h-9 rounded-lg text-xs font-medium flex items-center justify-center transition-all"
-              style={{
-                background: joinInput.trim() ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
-                color: joinInput.trim() ? 'white' : 'var(--text-muted)',
-                border: '1px solid var(--border)',
-                cursor: joinInput.trim() ? 'pointer' : 'default',
-              }}
+              <input
+                type="text"
+                className="input-field py-2 flex-1"
+                placeholder="Document title..."
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                style={{ fontSize: '12px' }}
+                aria-label="New document title"
+                id="new-doc-title"
+              />
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                type="submit"
+                disabled={!newTitle.trim() || creating}
+                className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer"
+                style={{
+                  background: newTitle.trim() ? 'linear-gradient(135deg, #4f8ef7, #9b72f7)' : 'var(--bg-tertiary)',
+                  border: '1px solid var(--border)',
+                }}
+                aria-label="Create document"
+                id="create-doc-btn"
+              >
+                {creating ? (
+                  <Loader2 size={14} className="animate-spin text-white" />
+                ) : (
+                  <Plus size={14} style={{ color: newTitle.trim() ? 'white' : 'var(--text-muted)' }} />
+                )}
+              </motion.button>
+            </motion.form>
+          ) : (
+            <motion.form
+              key="join"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.15 }}
+              onSubmit={handleJoin}
+              className="flex gap-2"
             >
-              {joining ? <Loader2 size={13} className="animate-spin" /> : 'Join'}
-            </button>
-          </form>
-        )}
+              <input
+                type="text"
+                className="input-field py-2 flex-1 font-mono text-xs"
+                placeholder="Paste Doc ID / Link"
+                value={joinInput}
+                onChange={(e) => setJoinInput(e.target.value)}
+                style={{ fontSize: '11px' }}
+                aria-label="Document ID or link"
+                id="join-doc-input"
+              />
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                type="submit"
+                disabled={!joinInput.trim() || joining}
+                className="flex-shrink-0 px-2.5 h-9 rounded-lg text-xs font-medium flex items-center justify-center transition-all cursor-pointer"
+                style={{
+                  background: joinInput.trim() ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
+                  color: joinInput.trim() ? 'white' : 'var(--text-muted)',
+                  border: '1px solid var(--border)',
+                }}
+                aria-label="Join document"
+                id="join-doc-btn"
+              >
+                {joining ? <Loader2 size={13} className="animate-spin" /> : 'Join'}
+              </motion.button>
+            </motion.form>
+          )}
+        </AnimatePresence>
 
-        {errorMessage && (
-          <div className="flex items-center gap-1.5 mt-2 text-xs text-red-400">
-            <AlertCircle size={12} className="flex-shrink-0" />
-            <span className="truncate">{errorMessage}</span>
-          </div>
-        )}
+        <AnimatePresence>
+          {errorMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="flex items-center gap-1.5 mt-2 text-xs text-red-400"
+            >
+              <AlertCircle size={12} className="flex-shrink-0" />
+              <span className="truncate">{errorMessage}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Search */}
@@ -197,12 +246,14 @@ export default function Sidebar({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ fontSize: '12px' }}
+            aria-label="Search documents"
+            id="search-docs"
           />
         </div>
       </div>
 
       {/* Divider */}
-      <div className="mx-4 mb-2 border-t" style={{ borderColor: 'var(--border-subtle)' }} />
+      <div className="mx-4 mb-2 border-t" style={{ borderColor: 'rgba(42, 51, 82, 0.3)' }} />
 
       {/* Document Label */}
       <div className="px-4 mb-1.5 flex items-center gap-1.5">
@@ -212,7 +263,7 @@ export default function Sidebar({
         </span>
         <span
           className="ml-auto text-xs px-1.5 py-0.5 rounded"
-          style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}
+          style={{ background: 'rgba(30, 36, 56, 0.6)', color: 'var(--text-muted)' }}
         >
           {documents.length}
         </span>
@@ -221,70 +272,101 @@ export default function Sidebar({
       {/* Document List */}
       <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
         {filtered.length === 0 ? (
-          <div className="text-center py-8 px-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-8 px-4"
+          >
             <FileText size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--text-muted)' }} />
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               {search ? 'No documents found' : 'No documents yet'}
             </p>
-          </div>
+            {!search && (
+              <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                Create your first document above
+              </p>
+            )}
+          </motion.div>
         ) : (
-          filtered.map((doc) => {
-            const isSelected = selectedDoc?.id === doc.id;
-            const docRole = doc.role || (doc.owner_id === user?.id ? 'OWNER' : null);
-            return (
-              <button
-                key={doc.id}
-                onClick={() => onSelectDoc(doc)}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all group animate-slideIn"
-                style={{
-                  background: isSelected ? 'var(--bg-tertiary)' : 'transparent',
-                  border: isSelected ? '1px solid var(--border)' : '1px solid transparent',
-                }}
-              >
-                <div
-                  className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
-                  style={{ background: isSelected ? 'var(--accent-blue)' : 'var(--bg-tertiary)' }}
+          <AnimatePresence>
+            {filtered.map((doc, idx) => {
+              const isSelected = selectedDoc?.id === doc.id;
+              const docRole = doc.role || (doc.owner_id === user?.id ? 'OWNER' : null);
+              return (
+                <motion.button
+                  key={doc.id}
+                  layout
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -12 }}
+                  transition={{ delay: idx * 0.02, type: 'spring', stiffness: 500, damping: 35 }}
+                  whileHover={{
+                    backgroundColor: isSelected ? undefined : 'rgba(30, 36, 56, 0.5)',
+                  }}
+                  onClick={() => onSelectDoc(doc)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-all group cursor-pointer"
+                  style={{
+                    background: isSelected ? 'rgba(30, 36, 56, 0.8)' : 'transparent',
+                    border: isSelected ? '1px solid rgba(79, 142, 247, 0.25)' : '1px solid transparent',
+                    boxShadow: isSelected ? '0 0 15px rgba(79, 142, 247, 0.08), inset 0 1px 0 rgba(255,255,255,0.02)' : 'none',
+                  }}
+                  aria-label={`Open ${doc.title || 'Untitled'}`}
+                  aria-current={isSelected ? 'page' : undefined}
                 >
-                  <FileText size={12} style={{ color: isSelected ? 'white' : 'var(--text-muted)' }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className="text-xs font-medium truncate flex items-center gap-1"
-                    style={{ color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                  <motion.div
+                    animate={{
+                      background: isSelected
+                        ? 'linear-gradient(135deg, #4f8ef7, #9b72f7)'
+                        : 'var(--bg-tertiary)',
+                    }}
+                    className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
                   >
-                    <span className="truncate">{doc.title || 'Untitled'}</span>
-                    {getRoleMiniIcon(doc)}
-                  </p>
-                  {doc.updated_at && (
-                    <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
-                      <Clock size={9} />
-                      {formatDate(doc.updated_at)}
+                    <FileText size={12} style={{ color: isSelected ? 'white' : 'var(--text-muted)' }} />
+                  </motion.div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-xs font-medium truncate flex items-center gap-1"
+                      style={{ color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+                    >
+                      <span className="truncate">{doc.title || 'Untitled'}</span>
+                      {getRoleMiniIcon(doc)}
                     </p>
-                  )}
-                </div>
+                    {doc.updated_at && (
+                      <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                        <Clock size={9} />
+                        {formatDate(doc.updated_at)}
+                      </p>
+                    )}
+                  </div>
 
-                {/* Three-dot menu */}
-                <DocumentMenu
-                  document={doc}
-                  docRole={docRole}
-                  onRename={(newTitle) => onRenameDoc?.(doc, newTitle)}
-                  onShare={() => onShareDoc?.(doc)}
-                  onDownload={() => onDownloadDoc?.(doc)}
-                  onDuplicate={() => onDuplicateDoc?.(doc)}
-                  onDelete={() => onDeleteDoc?.(doc)}
-                  onLeave={() => onLeaveDoc?.(doc)}
-                />
-              </button>
-            );
-          })
+                  <DocumentMenu
+                    document={doc}
+                    docRole={docRole}
+                    onRename={(newTitle) => onRenameDoc?.(doc, newTitle)}
+                    onShare={() => onShareDoc?.(doc)}
+                    onDownload={() => onDownloadDoc?.(doc)}
+                    onDuplicate={() => onDuplicateDoc?.(doc)}
+                    onDelete={() => onDeleteDoc?.(doc)}
+                    onLeave={() => onLeaveDoc?.(doc)}
+                  />
+                </motion.button>
+              );
+            })}
+          </AnimatePresence>
         )}
       </div>
 
       {/* User Info / Logout */}
-      <div className="p-3 border-t flex items-center gap-2.5" style={{ borderColor: 'var(--border)' }}>
+      <div
+        className="p-3 flex items-center gap-2.5"
+        style={{ borderTop: '1px solid rgba(42, 51, 82, 0.3)' }}
+      >
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)' }}
+          style={{
+            background: 'linear-gradient(135deg, #4f8ef7, #9b72f7)',
+            boxShadow: '0 2px 8px rgba(79, 142, 247, 0.25)',
+          }}
         >
           {initials(user?.email || 'User')}
         </div>
@@ -292,19 +374,24 @@ export default function Sidebar({
           <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
             {user?.email || 'Collaborator'}
           </p>
-          <p className="text-xs truncate" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+          <p className="text-xs truncate flex items-center gap-1" style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: '#22c55e' }} />
             Online
           </p>
         </div>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.1, backgroundColor: 'rgba(248,113,113,0.1)' }}
+          whileTap={{ scale: 0.95 }}
           onClick={onLogout}
           title="Sign Out"
-          className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10 hover:text-red-400"
+          className="p-1.5 rounded-lg transition-colors cursor-pointer"
           style={{ color: 'var(--text-muted)' }}
+          aria-label="Sign out"
+          id="logout-btn"
         >
           <LogOut size={15} />
-        </button>
+        </motion.button>
       </div>
-    </aside>
+    </motion.aside>
   );
 }

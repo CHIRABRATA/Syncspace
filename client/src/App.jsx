@@ -10,6 +10,8 @@ import AiPanel from './components/AiPanel';
 import AiPromptModal from './components/AiPromptModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import ShareModal from './components/ShareModal';
+import BackgroundNetwork from './components/BackgroundNetwork';
+import { triggerNetworkPulse } from './lib/networkPulse';
 import './index.css';
 
 export default function App() {
@@ -51,6 +53,9 @@ export default function App() {
     if (op.type === 'ERROR') {
       console.warn('[SyncSpace] Server error:', op.error);
       return;
+    }
+    if (op.type === 'INSERT_OP' || op.type === 'DELETE_OP') {
+      triggerNetworkPulse(op.senderId === 'syncbot-agent-id' ? 1.5 : 1);
     }
     if (op.type === 'INSERT_OP' && op.senderId === 'syncbot-agent-id') {
       setSyncBotActive(true);
@@ -294,6 +299,7 @@ export default function App() {
     };
     applyOp(op);
     send(op);
+    triggerNetworkPulse(0.8);
   }, [nodes, generatePosition, generateId, auth, applyOp, send]);
 
 
@@ -305,6 +311,7 @@ export default function App() {
     const op = { type: 'DELETE_OP', id: node.id };
     applyOp(op);
     send(op);
+    triggerNetworkPulse(0.8);
   }, [nodes, applyOp, send]);
 
   // Dedicated AI Prompt trigger (supports prompt text and target insertion mode/position)
@@ -352,7 +359,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex h-screen overflow-hidden relative" style={{ background: 'var(--bg-primary)' }}>
+      {/* 3D WebGL Background Network */}
+      <BackgroundNetwork />
+
       {/* Sidebar */}
       <Sidebar
         user={auth.user}
@@ -388,6 +398,8 @@ export default function App() {
         <div className="flex flex-1 min-h-0">
           <Editor
             text={text}
+            nodes={nodes}
+            syncBotActive={syncBotActive}
             onInsert={handleInsert}
             onDelete={handleDelete}
             onAiPrompt={handleAiPrompt}

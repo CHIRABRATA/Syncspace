@@ -23,8 +23,15 @@ export function useDocumentState() {
   // Apply incoming INSERT_OP from server
   const applyInsert = useCallback((op) => {
     setNodes((prev) => {
-      if (prev.some((n) => n.id === op.id)) return prev; // idempotent
-      const newNode = { id: op.id, char: op.char, position: op.position, deleted: false };
+      const isFromSyncBot = op.senderId === 'syncbot-agent-id';
+      const newNode = {
+        id: op.id,
+        char: op.char,
+        position: op.position,
+        deleted: false,
+        fromSyncBot: isFromSyncBot,
+        ts: isFromSyncBot ? Date.now() : undefined,
+      };
       const insertIdx = prev.findIndex((n) => n.position > op.position);
       if (insertIdx === -1) return [...prev, newNode];
       const next = [...prev];
