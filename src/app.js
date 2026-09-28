@@ -16,16 +16,26 @@ const server = http.createServer(app);
 
 // Allowed origins configuration
 const allowedOrigins = [
-  'https://syncspace08.netlify.app'
+  'https://syncspace08.netlify.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. mobile apps, curl) or allowed origins
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.netlify.app') || origin.endsWith('.vercel.app')) {
+    // Allow requests with no origin (e.g. mobile apps, curl, or server-to-server)
+    if (!origin) return callback(null, true);
+
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.netlify.app') ||
+      origin.endsWith('.vercel.app');
+
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // Return false gracefully instead of throwing an Error() instance
+      callback(null, false);
     }
   },
   credentials: true,
@@ -34,16 +44,21 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
-// Register CORS middleware BEFORE all routes, rate limiters, and error handlers
+// 1. Explicitly respond to pre-flight OPTIONS requests across all routes
+app.options('*', cors(corsOptions));
+
+// 2. Register CORS middleware BEFORE rate limiters, helmet, and route mounts
 app.use(cors(corsOptions));
 
 // Security Headers (configured to allow cross-origin resource access)
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginOpenerPolicy: false,
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: false,
+  })
+);
 
-// Rate Limiting (skips OPTIONS preflight requests)
+// Rate Limiting (applied specifically to /api routes and skips pre-flight OPTIONS)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
