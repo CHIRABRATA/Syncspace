@@ -5,7 +5,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Copy dependency manifests first for efficient Docker layer caching
-COPY package*.json ./
+COPY package.json package-lock.json* ./
 
 # Install production dependencies using modern npm syntax
 RUN npm install --omit=dev
